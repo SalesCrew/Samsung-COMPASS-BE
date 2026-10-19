@@ -74,8 +74,10 @@ const server=createServer(async(req,res)=>{
   if(route==='/me'&&method==='GET'){send(res,200,{profile:s.profile,calendarDay:today(),...status.data});return;}
   if(route==='/auth/logout'&&method==='POST'){const{error}=await authAdmin.auth.admin.signOut(s.token,'local');if(error)throw new APIError(400,'Abmelden fehlgeschlagen.');send(res,200,{ok:true});return;}
   if(status.data?.mfaRequired)throw new APIError(403,'Bitte den zweiten Faktor bestätigen.','MFA_REQUIRED');
-  if(route==='/auth/password'&&method==='POST'){
+  if((route==='/auth/password'||route==='/admin/password')&&method==='POST'){
+   if(route==='/admin/password')admin(s);
    const b=await json(req);if(typeof b.currentPassword!=='string'||typeof b.newPassword!=='string'||b.newPassword.length<12||b.newPassword.length>128)throw new APIError(400,'Das neue Passwort muss 12–128 Zeichen haben.');
+   if(route==='/admin/password'&&(typeof b.confirmPassword!=='string'||b.confirmPassword!==b.newPassword))throw new APIError(400,'Die neuen Passwörter stimmen nicht überein.');
    const verified=await publicAuth().auth.signInWithPassword({email:s.profile.email,password:b.currentPassword});
    if(verified.error||verified.data.user?.id!==s.profile.user_id)throw new APIError(401,'Das bisherige Passwort stimmt nicht.');
    const changed=await authAdmin.auth.admin.updateUserById(s.profile.user_id,{password:b.newPassword});
