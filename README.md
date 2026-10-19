@@ -1,0 +1,23 @@
+# Samsung COMPASS backend
+
+Node.js 24 TypeScript API for SEC authentication, department/account administration, immutable Excel imports and published closing/weekly snapshots. It uses the existing Samsung SEC Supabase project; it does not create a second database.
+
+## Run
+
+Use Node.js 24 and pnpm 10.33.0. Copy `.env.example` to `.env`, set the Supabase URL, publishable and server secret keys, and exact frontend origins. Run `pnpm install --frozen-lockfile` then `pnpm dev` or `pnpm start`.
+
+## Railway
+
+Deploy this repository from its root with the included Dockerfile. Set `HOST=0.0.0.0`, `PORT=4320`, `NODE_ENV=production`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and comma-separated exact `FRONTEND_ORIGINS`. The public domain routes to port 4320. Health check: `/api/health` (checks database connectivity). Use one replica: file previews are temporary in-memory state.
+
+Keep the secret key in Railway environment variables only. Normal business queries carry the caller's JWT and use database RLS. Existing SQL migrations in `supabase/migrations` are already applied to the SEC database; deployments do not automatically rerun or reset them.
+
+## Shared Excel definitions
+
+`shared/` contains the exact frontend domain, workbook and column-mapping definitions needed by this standalone backend. Runtime imports use repository-local paths. When changing the import contract, update and verify the corresponding definitions in both frontend and backend repositories.
+
+The importer accepts bounded `.xlsx`/`.xlsm` cached values. It never executes macros, formulas or external links. Known closing presets and the verified HE weekly layout are supported; other layouts need explicit mappings. Errors and missing required values block publication. Weekly values are cumulative dated snapshots and do not generate closing premiums. Admins upload and publish updates; there is no automatic weekly source feed.
+
+## Checks
+
+`pnpm typecheck` and `pnpm test`. Reader safety/type tests run without private data; original workbook integration cases are skipped when their private source folders are absent. Live API/database acceptance is documented separately and must use the SEC project, never another application's database. No credentials or employee workbooks are included here.

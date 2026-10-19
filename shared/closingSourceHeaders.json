@@ -1,0 +1,942 @@
+{
+  "DA": [
+    {
+      "column": "A",
+      "label": "SEC+Shop ID",
+      "section": "Personal"
+    },
+    {
+      "column": "B",
+      "label": "SEC ID",
+      "section": "Personal"
+    },
+    {
+      "column": "C",
+      "label": "Name",
+      "section": "Personal"
+    },
+    {
+      "column": "D",
+      "label": "Markt",
+      "section": "Personal"
+    },
+    {
+      "column": "E",
+      "label": "Markt + Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "F",
+      "label": "Supervisor",
+      "section": "Personal"
+    },
+    {
+      "column": "G",
+      "label": "Abteilung",
+      "section": "Personal"
+    },
+    {
+      "column": "H",
+      "label": "Stunden",
+      "section": "Personal"
+    },
+    {
+      "column": "I",
+      "label": "Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "J",
+      "label": "Gehalt",
+      "section": "Personal"
+    },
+    {
+      "column": "K",
+      "label": "Faktor Bonus",
+      "section": "Personal"
+    },
+    {
+      "column": "L",
+      "label": "Kommentar",
+      "section": "Personal"
+    },
+    {
+      "column": "M",
+      "label": "Monat",
+      "section": "Personal"
+    },
+    {
+      "column": "N",
+      "label": "Wissenstest",
+      "section": "Softbonus"
+    },
+    {
+      "column": "O",
+      "label": "Mystery Shopping",
+      "section": "Softbonus"
+    },
+    {
+      "column": "P",
+      "label": "Planogramm-\ninfo bzw. Survey",
+      "section": "Softbonus"
+    },
+    {
+      "column": "Q",
+      "label": "Marktzufriedenheit Elektro Köck",
+      "section": "Softbonus"
+    },
+    {
+      "column": "R",
+      "label": "POS Bewertung Elektro Köck",
+      "section": "Softbonus"
+    },
+    {
+      "column": "S",
+      "label": "S + Activity Elektro Köck",
+      "section": "Softbonus"
+    },
+    {
+      "column": "T",
+      "label": "PL Bewertung",
+      "section": "Softbonus"
+    },
+    {
+      "column": "U",
+      "label": "Softbonus",
+      "section": "Softbonus"
+    },
+    {
+      "column": "V",
+      "label": "Sellout lt. Targets",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "W",
+      "label": "Sellout wenn Absence relevant Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "X",
+      "label": "Sellout",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Y",
+      "label": "Laundry TTL",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Z",
+      "label": "REF TTL",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AA",
+      "label": "VC STICK TTL",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AB",
+      "label": "VC STICK PREMIUM",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AC",
+      "label": "VC STRETCH",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AD",
+      "label": "max. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AE",
+      "label": "ach. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AF",
+      "label": "ZE aliq",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AG",
+      "label": "On Top-Boni",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AH",
+      "label": "Kategorie",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AI",
+      "label": "SEC Level",
+      "section": "Monthly Closing"
+    }
+  ],
+  "HE": [
+    {
+      "column": "A",
+      "label": "SEC+Shop ID",
+      "section": "Personal"
+    },
+    {
+      "column": "B",
+      "label": "SEC ID",
+      "section": "Personal"
+    },
+    {
+      "column": "C",
+      "label": "Name",
+      "section": "Personal"
+    },
+    {
+      "column": "D",
+      "label": "Markt",
+      "section": "Personal"
+    },
+    {
+      "column": "E",
+      "label": "Markt + Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "F",
+      "label": "Supervisor",
+      "section": "Personal"
+    },
+    {
+      "column": "G",
+      "label": "Abteilung",
+      "section": "Personal"
+    },
+    {
+      "column": "H",
+      "label": "Stunden",
+      "section": "Personal"
+    },
+    {
+      "column": "I",
+      "label": "Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "J",
+      "label": "Gehalt",
+      "section": "Personal"
+    },
+    {
+      "column": "K",
+      "label": "Faktor Bonus",
+      "section": "Personal"
+    },
+    {
+      "column": "L",
+      "label": "Kommentar",
+      "section": "Personal"
+    },
+    {
+      "column": "M",
+      "label": "Monat",
+      "section": "Personal"
+    },
+    {
+      "column": "N",
+      "label": "Wissenstest",
+      "section": "Softbonus"
+    },
+    {
+      "column": "O",
+      "label": "Mystery Shopping",
+      "section": "Softbonus"
+    },
+    {
+      "column": "P",
+      "label": "Samsung+ E4Y",
+      "section": "Softbonus"
+    },
+    {
+      "column": "Q",
+      "label": "Surveys",
+      "section": "Softbonus"
+    },
+    {
+      "column": "R",
+      "label": "Planogramme",
+      "section": "Softbonus"
+    },
+    {
+      "column": "S",
+      "label": "POS\nE4Y",
+      "section": "Softbonus"
+    },
+    {
+      "column": "T",
+      "label": "PL Bewertung",
+      "section": "Softbonus"
+    },
+    {
+      "column": "U",
+      "label": "Softbonus",
+      "section": "Softbonus"
+    },
+    {
+      "column": "V",
+      "label": "Sellout lt. Targets",
+      "section": "Softbonus"
+    },
+    {
+      "column": "W",
+      "label": "Sellout wenn Absence relevant Bonus",
+      "section": "Softbonus"
+    },
+    {
+      "column": "X",
+      "label": "Sellout",
+      "section": "Softbonus"
+    },
+    {
+      "column": "Y",
+      "label": "TV TTL TGT (30%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Z",
+      "label": "Soundbar TTL TGT (15%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AA",
+      "label": "ASP TGT (20%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AB",
+      "label": "TV IHS TGT (35%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AC",
+      "label": "Avg.  Bonus last months",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AD",
+      "label": "max. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AE",
+      "label": "ach. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AF",
+      "label": "ZE aliq",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AG",
+      "label": "Sales Race",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AH",
+      "label": "On Top Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AI",
+      "label": "Kategorie Name",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AJ",
+      "label": "Kategorie",
+      "section": "Monthly Closing"
+    }
+  ],
+  "IM": [
+    {
+      "column": "A",
+      "label": "SEC+Shop ID",
+      "section": "Personal"
+    },
+    {
+      "column": "B",
+      "label": "SEC ID",
+      "section": "Personal"
+    },
+    {
+      "column": "C",
+      "label": "Name",
+      "section": "Personal"
+    },
+    {
+      "column": "D",
+      "label": "Markt",
+      "section": "Personal"
+    },
+    {
+      "column": "E",
+      "label": "Markt + Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "F",
+      "label": "Supervisor",
+      "section": "Personal"
+    },
+    {
+      "column": "G",
+      "label": "Abteilung",
+      "section": "Personal"
+    },
+    {
+      "column": "H",
+      "label": "Stunden",
+      "section": "Personal"
+    },
+    {
+      "column": "I",
+      "label": "Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "J",
+      "label": "Gehalt",
+      "section": "Personal"
+    },
+    {
+      "column": "K",
+      "label": "Faktor Bonus",
+      "section": "Personal"
+    },
+    {
+      "column": "L",
+      "label": "Kommentar",
+      "section": "Personal"
+    },
+    {
+      "column": "M",
+      "label": "Monat",
+      "section": "Personal"
+    },
+    {
+      "column": "N",
+      "label": "Wissenstest",
+      "section": "Softbonus"
+    },
+    {
+      "column": "O",
+      "label": "Mystery Shopping",
+      "section": "Softbonus"
+    },
+    {
+      "column": "P",
+      "label": "Reporting",
+      "section": "Softbonus"
+    },
+    {
+      "column": "Q",
+      "label": "PL Bewertung",
+      "section": "Softbonus"
+    },
+    {
+      "column": "R",
+      "label": "Softbonus",
+      "section": "Softbonus"
+    },
+    {
+      "column": "S",
+      "label": "Sellout lt. Targets",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "T",
+      "label": "Sellout incl. Absence relevant Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "U",
+      "label": "Sellout",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "V",
+      "label": "max. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "W",
+      "label": "ach. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "X",
+      "label": "ZE aliq",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Y",
+      "label": "IM Sales Race",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Z",
+      "label": "Kategorie",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AA",
+      "label": "Flagship (40%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AB",
+      "label": "A-Series (20%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AC",
+      "label": "HHP ASP (10%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AD",
+      "label": "Wear (10%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AE",
+      "label": "Tablet (10%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AF",
+      "label": "ACCESSORY (10%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AG",
+      "label": "Zustand POS (Sauberkeit, Werbematerial etc.)",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AH",
+      "label": "Namensschild, Shirt, gepflegtes Auftreten",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AI",
+      "label": "Qualität und Schnelligkeit von Reportingaufgaben (inkl. Market Sensing)",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AJ",
+      "label": "Mängel/Schäden am POS",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AK",
+      "label": "Umsetzung allgem. Aufgaben d. SV",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AL",
+      "label": "Samsung + Activity",
+      "section": "PL Bewertung"
+    }
+  ],
+  "LH": [
+    {
+      "column": "A",
+      "label": "SEC+Shop ID",
+      "section": "Personal"
+    },
+    {
+      "column": "B",
+      "label": "SEC ID",
+      "section": "Personal"
+    },
+    {
+      "column": "C",
+      "label": "Name",
+      "section": "Personal"
+    },
+    {
+      "column": "D",
+      "label": "Markt",
+      "section": "Personal"
+    },
+    {
+      "column": "E",
+      "label": "Markt + Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "F",
+      "label": "Supervisor",
+      "section": "Personal"
+    },
+    {
+      "column": "G",
+      "label": "Abteilung",
+      "section": "Personal"
+    },
+    {
+      "column": "H",
+      "label": "Stunden",
+      "section": "Personal"
+    },
+    {
+      "column": "I",
+      "label": "Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "J",
+      "label": "Gehalt",
+      "section": "Personal"
+    },
+    {
+      "column": "K",
+      "label": "Faktor Bonus",
+      "section": "Personal"
+    },
+    {
+      "column": "L",
+      "label": "Kommentar",
+      "section": "Personal"
+    },
+    {
+      "column": "M",
+      "label": "Monat",
+      "section": "Personal"
+    },
+    {
+      "column": "N",
+      "label": "Wissenstest",
+      "section": "Softbonus"
+    },
+    {
+      "column": "O",
+      "label": "Mystery Shopping",
+      "section": "Softbonus"
+    },
+    {
+      "column": "P",
+      "label": "Reporting",
+      "section": "Softbonus"
+    },
+    {
+      "column": "Q",
+      "label": "PL Bewertung",
+      "section": "Softbonus"
+    },
+    {
+      "column": "R",
+      "label": "Softbonus",
+      "section": "Softbonus"
+    },
+    {
+      "column": "S",
+      "label": "IM Sellout lt. Targets",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "T",
+      "label": "HE Sellout lt. Targets",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "U",
+      "label": "Sellout lt. Targets combined",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "V",
+      "label": "Sellout incl. Absence relevant Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "W",
+      "label": "Sellout",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "X",
+      "label": "TV TTL TGT (30%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Y",
+      "label": "Soundbar TTL TGT (15%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Z",
+      "label": "ASP TGT (20%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AA",
+      "label": "TV IHS TGT (35%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AB",
+      "label": "max. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AC",
+      "label": "ach. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AD",
+      "label": "ZE aliq",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AE",
+      "label": "Sales Race",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AF",
+      "label": "On Top Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AG",
+      "label": "Kategorie",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AH",
+      "label": "Flagship (40%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AI",
+      "label": "A-Series (20%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AJ",
+      "label": "HHP ASP (10%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AK",
+      "label": "Wear (10%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AL",
+      "label": "Tablet (10%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AM",
+      "label": "ACCESSORY (10%)",
+      "section": "IM Verkauf"
+    },
+    {
+      "column": "AN",
+      "label": "Zustand POS (Sauberkeit, Werbematerial etc.)",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AO",
+      "label": "Namensschild, Shirt, gepflegtes Auftreten",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AP",
+      "label": "Qualität und Schnelligkeit von Reportingaufgaben (inkl. Market Sensing)",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AQ",
+      "label": "Mängel/Schäden am POS",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AR",
+      "label": "Umsetzung allgem. Aufgaben d. SV",
+      "section": "PL Bewertung"
+    },
+    {
+      "column": "AS",
+      "label": "Samsung + Activity",
+      "section": "PL Bewertung"
+    }
+  ],
+  "ST": [
+    {
+      "column": "A",
+      "label": "SEC+Shop ID",
+      "section": "Personal"
+    },
+    {
+      "column": "B",
+      "label": "SEC ID",
+      "section": "Personal"
+    },
+    {
+      "column": "C",
+      "label": "Name",
+      "section": "Personal"
+    },
+    {
+      "column": "D",
+      "label": "Markt",
+      "section": "Personal"
+    },
+    {
+      "column": "E",
+      "label": "Markt + Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "F",
+      "label": "Supervisor",
+      "section": "Personal"
+    },
+    {
+      "column": "G",
+      "label": "Abteilung",
+      "section": "Personal"
+    },
+    {
+      "column": "H",
+      "label": "Stunden",
+      "section": "Personal"
+    },
+    {
+      "column": "I",
+      "label": "Anstellung",
+      "section": "Personal"
+    },
+    {
+      "column": "J",
+      "label": "Gehalt",
+      "section": "Personal"
+    },
+    {
+      "column": "K",
+      "label": "Faktor Bonus",
+      "section": "Personal"
+    },
+    {
+      "column": "L",
+      "label": "Kommentar",
+      "section": "Personal"
+    },
+    {
+      "column": "M",
+      "label": "Monat",
+      "section": "Personal"
+    },
+    {
+      "column": "N",
+      "label": "Wissenstest",
+      "section": "Softbonus"
+    },
+    {
+      "column": "O",
+      "label": "Mystery Shopping",
+      "section": "Softbonus"
+    },
+    {
+      "column": "P",
+      "label": "Samsung+ Activityrate",
+      "section": "Softbonus"
+    },
+    {
+      "column": "Q",
+      "label": "Surveys",
+      "section": "Softbonus"
+    },
+    {
+      "column": "R",
+      "label": "Planogramme",
+      "section": "Softbonus"
+    },
+    {
+      "column": "S",
+      "label": "POS Bewertung",
+      "section": "Softbonus"
+    },
+    {
+      "column": "T",
+      "label": "Marktzfriedenheit",
+      "section": "Softbonus"
+    },
+    {
+      "column": "U",
+      "label": "Softbonus",
+      "section": "Softbonus"
+    },
+    {
+      "column": "V",
+      "label": "Sellout",
+      "section": "Softbonus"
+    },
+    {
+      "column": "W",
+      "label": "TV TTL TGT (30%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "X",
+      "label": "Soundbar TTL TGT (15%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Y",
+      "label": "ASP TGT (20%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "Z",
+      "label": "TV IHS TGT (35%)",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AA",
+      "label": "Avg.  Bonus last months",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AB",
+      "label": "max. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AC",
+      "label": "ach. Bonus",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AD",
+      "label": "ZE aliq",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AE",
+      "label": "Kategorie Name",
+      "section": "Monthly Closing"
+    },
+    {
+      "column": "AF",
+      "label": "Kategorie",
+      "section": "Monthly Closing"
+    }
+  ]
+}
