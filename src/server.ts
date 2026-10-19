@@ -3,11 +3,12 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { authAdmin, publicAuth, userDatabase } from './supabase.ts';
 import { readWorkbook, type ServerSheet } from './workbook.ts';
 import { privacyMappings, validateClosing, validateWeekly, weeklyMappings, validateContext, sourcePeriod, type ImportContext } from './imports.ts';
+import { resolveImportPeople, type ImportPerson, type ImportAssignment } from './identity.ts';
 import { closingMappings, detectClosingGroup, excelMonth } from '../shared/closingImport.ts';
 import type { SourceColumnMapping, AdminMetric } from '../shared/admin.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-type Profile={user_id:string;email:string;display_name:string;role:'app_admin'|'department_admin'|'sec';department_ids:string[];person_id:string|null;primary_department:string|null;setting:string;active:boolean;must_change_password:boolean};
+type Profile={user_id:string;email:string;display_name:string;role:'app_admin'|'department_admin'|'sec';department_ids:string[];person_id:string|null;primary_department:string|null;setting:string;active:boolean;must_change_password:boolean;is_test:boolean};
 type Session={token:string;profile:Profile;db:SupabaseClient};
 class APIError extends Error { status:number;code:string;constructor(status:number,message:string,code='REQUEST_FAILED'){super(message);this.status=status;this.code=code;} }
 const origins=new Set((process.env.FRONTEND_ORIGINS??'http://127.0.0.1:4319,http://localhost:4319').split(',').map(s=>s.trim()));
@@ -86,6 +87,13 @@ const server=createServer(async(req,res)=>{
   if(s.profile.must_change_password)throw new APIError(403,'Bitte zuerst dein Passwort ändern.','PASSWORD_CHANGE_REQUIRED');
   if(route==='/notice'&&method==='POST'){const b=await json(req);const{error}=await s.db.rpc('sec_ack_notice',{p_version:b.version});failDB(error);send(res,200,{ok:true});return;}
   if(route==='/dashboard'&&method==='GET'){
+   const realCalendarDay=today();const testDay=url.searchParams.get('testDay');const testMonth=url.searchParams.get('testMonth')??testDay?.slice(0,7);let calendarDay=realCalendarDay;
+   if(testMonth){
+    if(!s.profile.is_test||s.profile.role!=='sec')throw new APIError(403,'Der Prüfmonat ist nur für freigegebene Testkonten verfügbar.');
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(testMonth)||testMonth>realCalendarDay.slice(0,7))throw new APIError(400,'Ungültiger Prüfmonat.');
+    calendarDay=testMonth===realCalendarDay.slice(0,7)?realCalendarDay:testMonth+'-'+String(new Date(Date.UTC(Number(testMonth.slice(0,4)),Number(testMonth.slice(5,7)),0)).getUTCDate()).padStart(2,'0');
+    if(testDay){const parsed=new Date(testDay+'T12:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(testDay)||!testDay.startsWith(testMonth+'-')||testDay>realCalendarDay||!Number.isFinite(parsed.valueOf())||parsed.toISOString().slice(0,10)!==testDay)throw new APIError(400,'Ungültiger Prüfstand.');calendarDay=testDay;}
+   }
    if(!s.profile.person_id){send(res,200,{profile:s.profile,assignments:[],reports:[],weekly:[],read:[],calendarDay:today()});return;}
    const assignments=await allRows(s.db,'sec_assignments',{person_id:s.profile.person_id},'created_at');
    const matching=assignments.filter(a=>a.department_id===s.profile.primary_department&&(a.department_id!=='DA'||a.setting===s.profile.setting));
@@ -93,7 +101,7 @@ const server=createServer(async(req,res)=>{
    if(selected&&!matching.some(a=>a.id===selected))throw new APIError(403,'Marktzuordnung nicht freigegeben.');
    const [reports,weekly,read]=selected?await Promise.all([allRows(s.db,'sec_monthly_reports',{assignment_id:selected},'published_at'),allRows(s.db,'sec_weekly_snapshots',{assignment_id:selected},'published_at'),allRows(s.db,'sec_read_receipts',{user_id:s.profile.user_id},'read_at')]):[[],[],[]];
    const rankings=Object.fromEntries(await Promise.all([...new Set(reports.map(r=>String(r.month)))].map(async month=>{const{data,error}=await s.db.rpc('sec_own_rank',{p_assignment:selected,p_month:month});failDB(error);return[month.slice(0,7),data];})));
-   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports,weekly,read,rankings,calendarDay:today()});return;
+   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports,weekly,read,rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
   }
   if(route==='/read'&&method==='POST'){const b=await json(req);if(typeof b.reportId!=='string')throw new APIError(400,'Bericht fehlt.');const{error}=await s.db.from('sec_read_receipts').upsert({user_id:s.profile.user_id,report_id:b.reportId,read_at:new Date().toISOString()});failDB(error);send(res,200,{ok:true});return;}
   if(route==='/privacy/requests'&&method==='GET'){send(res,200,{requests:await allRows(s.db,'sec_privacy_requests',s.profile.role==='sec'?{user_id:s.profile.user_id}:{},'created_at')});return;}
@@ -176,10 +184,16 @@ const server=createServer(async(req,res)=>{
    const pivot=sheet.name.replace(/[\s_-]/g,'').toLowerCase()==='pivotliste';
    const mappings=Array.isArray(b.mappings)?b.mappings as SourceColumnMapping[]:pivot?privacyMappings(closingMappings(sheet,ctx.group,ctx.metrics)):weeklyMappings(sheet,ctx);
    const result=pivot?validateClosing(sheet,mappings,ctx):validateWeekly(sheet,mappings,ctx);
-   if(importMatch[2]==='validate'){send(res,200,{issues:result.issues,count:result.records.length,otherMonths:result.otherMonths,skipped:result.skipped,specialValues:result.specialValues,mappings,configurationVersion:ctx.configurationVersion});return;}
-   if(result.issues.length||!result.records.length)throw new APIError(400,'Import enthält Fehler oder keine passenden Datensätze. Zuerst prüfen.','IMPORT_INVALID');
-   const fingerprint=createHash('sha256').update(JSON.stringify([p.hash,ctx,privacyMappings(mappings),sheet.name])).digest('hex');
-   const{data,error}=await s.db.rpc('sec_stage_import',{p_department:ctx.group,p_month:ctx.month+'-01',p_phase:ctx.phase,p_as_of:ctx.asOf,p_fingerprint:fingerprint,p_filename:p.filename,p_sheet:sheet.name,p_mapping:privacyMappings(mappings),p_config:config?.id??null,p_rows:result.records});failDB(error);send(res,201,{import:data});return;
+   if(b.personMatches!==undefined&&(typeof b.personMatches!=='object'||b.personMatches===null||Array.isArray(b.personMatches)||Object.entries(b.personMatches).some(([k,v])=>!/^\d+$/.test(k)||typeof v!=='string')))throw new APIError(400,'Personenzuordnung prüfen.');
+   const[people,assignments]=await Promise.all([allRows(s.db,'sec_people'),allRows(s.db,'sec_assignments')]);
+   const identities=resolveImportPeople(result.records,people as ImportPerson[],assignments as ImportAssignment[],ctx.group,ctx.setting,(b.personMatches??{}) as Record<string,string>);
+   const issues=[...result.issues,...identities.issues];
+   if(importMatch[2]==='validate'){send(res,200,{issues,count:result.records.length,otherMonths:result.otherMonths,skipped:result.skipped,specialValues:result.specialValues,mappings,configurationVersion:ctx.configurationVersion,identityMatches:identities.matches,unresolvedCount:identities.unresolvedCount,people:(people as ImportPerson[]).map(person=>({...person,markets:(assignments as ImportAssignment[]).filter(a=>a.person_id===person.id&&a.department_id===ctx.group&&a.setting===ctx.setting).map(a=>a.market)}))});return;}
+   if(issues.length||!identities.records.length)throw new APIError(400,'Import enthält Fehler oder offene Personenzuordnungen. Zuerst prüfen.','IMPORT_INVALID');
+   const contract:unknown[]=[p.hash,ctx,privacyMappings(mappings),sheet.name];
+   if(identities.records.some(r=>{const original=result.records.find(v=>v.row===r.row);return original?.externalId!==r.externalId||original?.market!==r.market;}))contract.push(identities.records.map(r=>[r.row,r.externalId,r.market]));
+   const fingerprint=createHash('sha256').update(JSON.stringify(contract)).digest('hex');
+   const{data,error}=await s.db.rpc('sec_stage_import',{p_department:ctx.group,p_month:ctx.month+'-01',p_phase:ctx.phase,p_as_of:ctx.asOf,p_fingerprint:fingerprint,p_filename:p.filename,p_sheet:sheet.name,p_mapping:privacyMappings(mappings),p_config:config?.id??null,p_rows:identities.records});failDB(error);send(res,201,{import:data});return;
   }
   const publishMatch=route.match(/^\/imports\/([0-9a-f-]{36})\/publish$/);
   if(publishMatch&&method==='POST'){const{data,error}=await s.db.rpc('sec_publish_import',{p_import:publishMatch[1]});failDB(error);send(res,200,{import:data});return;}

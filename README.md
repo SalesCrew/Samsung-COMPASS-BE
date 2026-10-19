@@ -18,6 +18,10 @@ Keep the secret key in Railway environment variables only. Normal business queri
 
 The importer accepts bounded `.xlsx`/`.xlsm` cached values. It never executes macros, formulas or external links. Known closing presets and the verified HE weekly layout are supported; other layouts need explicit mappings. Errors and missing required values block publication. Weekly values are cumulative dated snapshots and do not generate closing premiums. Admins upload and publish updates; there is no automatic weekly source feed.
 
+The original HA/IM `Result` trackers are also recognized at their Store/SEC/TGT header row. Their EDI period determines the reporting cutoff. These are store totals: an existing unique employee assignment or an explicit person choice is required. Name matching ignores case, separators, accents and name order; only clear fuzzy matches are automatic. Ambiguous or unknown names require review before staging. The selected person and original source identity are stored with the import. New source people require an explicit choice.
+
+Only server-authorized SEC test accounts may request `testMonth`/`testDay` on their own dashboard. This replays historical source stands without changing publication dates, source values, normal accounts or database ownership. The frontend labels the control `Prüfstand`.
+
 ## Checks
 
 `pnpm typecheck` and `pnpm test`. Reader safety/type tests run without private data; original workbook integration cases are skipped when their private source folders are absent. Live API/database acceptance is documented separately and must use the SEC project, never another application's database. No credentials or employee workbooks are included here.

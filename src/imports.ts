@@ -10,7 +10,9 @@ export type ImportIssue = {row:number;column:string;message:string};
 const deniedFields=new Set(['premium.salary','assignment.comment','attendance.reason','attendance.code']);
 export const privacyMappings=(mappings:SourceColumnMapping[])=>mappings.map(m=>deniedFields.has(m.field)?{...m,dataset:'ignore' as const}:m);
 export function sourcePeriod(sheet:ServerSheet){
-  const header=sheet.allRows.filter(r=>r.row<(sheet.headerRow??1)).flatMap(r=>Object.values(r.cells).map(c=>String(c.value??''))).join(' ');
+  const rows=sheet.allRows.filter(r=>r.row<(sheet.headerRow??1));
+  const edi=rows.find(r=>Object.values(r.cells).some(c=>/EDI\s*Data\s*period/i.test(String(c.value??''))));
+  const header=(edi?[edi]:rows).flatMap(r=>Object.values(r.cells).map(c=>String(c.value??''))).join(' ');
   const match=header.match(/(\d{2})\.(\d{2})\.(\d{4})\s*[-–]\s*(\d{2})\.(\d{2})\.(\d{4})/);
   return match?{from:match[3]+'-'+match[2]+'-'+match[1],asOf:match[6]+'-'+match[5]+'-'+match[4],month:match[6]+'-'+match[5]}:null;
 }
@@ -70,15 +72,19 @@ export function weeklyMappings(sheet:ServerSheet,ctx:ImportContext):SourceColumn
   add(find(['store','markt','market']),'Markt','assignment.market','text',true);
   add(find(['name','sec name','promoter name']),'Name','person.name','text');
   const he=ctx.group==='HE'&&sheet.columns.find(c=>c.key==='F')?.label==='TGT'&&sheet.columns.find(c=>c.key==='D')?.label==='SEC ID';
+  const tracker=['DA','IM'].includes(ctx.group)&&sheet.columns.find(c=>c.key==='C')?.label==='Store'&&sheet.columns.find(c=>c.key==='D')?.label==='SEC';
+  if(he)mappings.find(m=>m.field==='person.name')!.column='C';
+  const trackerKeys:Record<string,[string,string]>={laundry:['F','L'],ref:['N','T'],'vc-stick':['V','AC'],'vc-premium':['AE','AK'],flagship:['F','L'],'a-series':['N','T'],'hhp-asp':['V','AB'],wear:['AD','AJ'],tablet:['AL','AR'],accessories:['AW','BC']};
   const keys:Record<string,[string,string]>={units:['F','G'],soundbar:['I','J'],asp:['L','M'],share:['O','P']};
   for(const m of definitions(ctx)){
-    const pair=he?keys[m.key]:undefined;
+    const pair=he?keys[m.key]:tracker?trackerKeys[m.key]:undefined;
     const target=pair?.[0]??sheet.columns.find(c=>c.label.toLowerCase()===m.label.toLowerCase()+' target')?.key??'';
     const actual=pair?.[1]??sheet.columns.find(c=>c.label.toLowerCase()===m.label.toLowerCase()+' actual')?.key??'';
     add(target,m.label+' · Ziel',m.key+'.target',m.unit==='%'?'percent':m.unit==='€'?'currency':'number',true);
     add(actual,m.label+' · Ist',m.key+'.actual',m.unit==='%'?'percent':m.unit==='€'?'currency':'number',ctx.phase!=='TARGET_INITIALIZATION');
   }
   if(he)add('R','Total T/A%','sellout.overall','percent');
+  if(tracker)add(ctx.group==='IM'?'BE':ctx.setting==='laundry-ref'?'AO':ctx.setting==='vc'?'AQ':'AM','Total T/A%','sellout.overall','percent');
   return mappings;
 }
 function convert(cell:ExcelCell,type:SourceColumnMapping['dataType']):ExcelCell{
@@ -92,7 +98,8 @@ export function validateWeekly(sheet:ServerSheet,mappings:SourceColumnMapping[],
   const issues:ImportIssue[]=[];const records:NormalizedRow[]=[];let skipped=0;let specialValues=0;
   const keys=new Set<string>();const sources=new Set<string>();
   for(const m of safe){if(sources.has(m.column))issues.push({row:0,column:m.column,message:'Quellspalte ist mehrfach zugeordnet.'});sources.add(m.column);if(!sheet.columns.some(c=>c.key===m.column))issues.push({row:0,column:m.column,message:'Quellspalte fehlt.'});}
-  for(const f of ['person.externalId','assignment.market',...definitions(ctx).map(m=>m.key+'.target')]){
+  if(!safe.some(m=>['person.externalId','person.name','assignment.market'].includes(m.field)))issues.push({row:0,column:'',message:'Name, SEC-ID oder Markt muss zugeordnet sein.'});
+  for(const f of definitions(ctx).map(m=>m.key+'.target')){
     if(!safe.some(m=>m.field===f))issues.push({row:0,column:'',message:'Pflichtzuordnung fehlt: '+f});
   }
   if(ctx.phase==='MONTH_FINALIZATION')issues.push({row:0,column:'',message:'Wochenliste darf keinen Monatsabschluss oder Prämien erzeugen.'});
@@ -104,10 +111,11 @@ export function validateWeekly(sheet:ServerSheet,mappings:SourceColumnMapping[],
     const fields:Record<string,ImportedCell>={};
     for(const m of safe)fields[m.field]={...convert(r.cells[m.column]??{kind:'blank',value:null},m.dataType),sourceColumn:m.column};
     const id=text(fields['person.externalId']);const market=text(fields['assignment.market']);
-    if(!id&&!market){skipped++;continue;}
+    const name=text(fields['person.name']);
+    if(!id&&!name&&!market){skipped++;continue;}
     if(!id&&/^(?:total|gesamt|summe)$/i.test(market)){skipped++;continue;}
-    if(!id||!market){issues.push({row:r.row,column:'',message:'SEC ID oder Markt fehlt.'});continue;}
-    if(keys.has(id+'|'+market)){issues.push({row:r.row,column:'',message:'Doppelter SEC-/Markt-Datensatz.'});continue;}keys.add(id+'|'+market);
+    const key=(id||name)+'|'+market;
+    if(keys.has(key)){issues.push({row:r.row,column:'',message:'Doppelter SEC-/Markt-Datensatz.'});continue;}keys.add(key);
     const metrics=definitions(ctx).map(m=>{
       const tm=safe.find(v=>v.field===m.key+'.target');const am=safe.find(v=>v.field===m.key+'.actual');
       const tc=fields[m.key+'.target'];const ac=fields[m.key+'.actual'];

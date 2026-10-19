@@ -63,7 +63,8 @@ export function readWorkbook(bytes: Uint8Array, filename: string): ServerSheet[]
     if(allRows.length>50000)throw new Error('Zu viele Zeilen im Arbeitsblatt.');
     const pivot=normalize(name)==='pivotliste';
     const candidate=allRows.slice(0,25).find(row=>Object.values(row.cells).some(c=>['secid','promoterid'].includes(normalize(String(c.value??'')))));
-    const headerRow=pivot?2:candidate?.row??1;
+    const trackerHeader=allRows.slice(0,25).find(row=>String(row.cells.C?.value??'').trim()==='Store'&&String(row.cells.D?.value??'').trim()==='SEC'&&String(row.cells.F?.value??'').trim()==='TGT');
+    const headerRow=pivot?2:candidate?.row??trackerHeader?.row??1;
     const header=allRows.find(r=>r.row===headerRow)?.cells??{};
     const sectionRows=allRows.filter(r=>r.row<headerRow);
     const maxColumn=Math.max(1,...Object.keys(header).filter(k=>header[k].value!=null&&header[k].value!=='').map(columnIndex));
