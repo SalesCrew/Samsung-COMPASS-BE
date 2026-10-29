@@ -96,14 +96,15 @@ const server=createServer(async(req,res)=>{
     calendarDay=testMonth===realCalendarDay.slice(0,7)?realCalendarDay:testMonth+'-'+String(new Date(Date.UTC(Number(testMonth.slice(0,4)),Number(testMonth.slice(5,7)),0)).getUTCDate()).padStart(2,'0');
     if(testDay){const parsed=new Date(testDay+'T12:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(testDay)||!testDay.startsWith(testMonth+'-')||testDay>realCalendarDay||!Number.isFinite(parsed.valueOf())||parsed.toISOString().slice(0,10)!==testDay)throw new APIError(400,'Ungültiger Prüfstand.');calendarDay=testDay;}
    }
-   if(!s.profile.person_id){send(res,200,{profile:s.profile,assignments:[],reports:[],weekly:[],read:[],calendarDay:today()});return;}
+   if(!s.profile.person_id){send(res,200,{profile:s.profile,assignments:[],reports:[],weekly:[],read:[],pointHistory:[],calendarDay:today()});return;}
    const assignments=await allRows(s.db,'sec_assignments',{person_id:s.profile.person_id},'created_at');
    const matching=assignments.filter(a=>a.department_id===s.profile.primary_department&&(a.department_id!=='DA'||a.setting===s.profile.setting));
    const selected=url.searchParams.get('assignment')??String(matching.at(-1)?.id??'');
    if(selected&&!matching.some(a=>a.id===selected))throw new APIError(403,'Marktzuordnung nicht freigegeben.');
-   const [reports,weekly,read]=selected?await Promise.all([allRows(s.db,'sec_monthly_reports',{assignment_id:selected},'published_at'),allRows(s.db,'sec_weekly_snapshots',{assignment_id:selected},'published_at'),allRows(s.db,'sec_read_receipts',{user_id:s.profile.user_id},'read_at')]):[[],[],[]];
+   const [reports,weekly,read,history]=selected?await Promise.all([allRows(s.db,'sec_monthly_reports',{assignment_id:selected},'published_at'),allRows(s.db,'sec_weekly_snapshots',{assignment_id:selected},'published_at'),allRows(s.db,'sec_read_receipts',{user_id:s.profile.user_id},'read_at'),s.db.rpc('sec_own_point_history',{p_assignment:selected})]):[[],[],[],{data:[],error:null}];
+   failDB(history.error);
    const rankings=Object.fromEntries(await Promise.all([...new Set(reports.map(r=>String(r.month)))].map(async month=>{const{data,error}=await s.db.rpc('sec_own_rank',{p_assignment:selected,p_month:month});failDB(error);return[month.slice(0,7),data];})));
-   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports,weekly,read,rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
+   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports,weekly,read,pointHistory:history.data,rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
   }
   if(route==='/read'&&method==='POST'){const b=await json(req);if(typeof b.reportId!=='string')throw new APIError(400,'Bericht fehlt.');const{error}=await s.db.from('sec_read_receipts').upsert({user_id:s.profile.user_id,report_id:b.reportId,read_at:new Date().toISOString()});failDB(error);send(res,200,{ok:true});return;}
   if(route==='/privacy/requests'&&method==='GET'){send(res,200,{requests:await allRows(s.db,'sec_privacy_requests',s.profile.role==='sec'?{user_id:s.profile.user_id}:{},'created_at')});return;}

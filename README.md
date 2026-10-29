@@ -22,6 +22,14 @@ The original HA/IM `Result` trackers are also recognized at their Store/SEC/TGT 
 
 Only server-authorized SEC test accounts may request `testMonth`/`testDay` on their own dashboard. This replays historical source stands without changing publication dates, source values, normal accounts or database ownership. The frontend labels the control `Prüfstand`.
 
+## Rolling points and own ranking
+
+`/dashboard` includes `pointHistory`, a minimal monthly projection for the signed-in person's current division across market/setting changes. Duplicate market rows contribute once when their points agree; missing or conflicting point values remain unavailable. Financial reports stay assignment-scoped and premiums remain calendar-year totals.
+
+The private SQL projection is not executable by clients. Scoped invoker wrappers validate the live user/session/current division before returning own point history or an own ranking result. Ranking uses twelve complete monthly person values ending with the selected closing. Peers with incomplete histories are excluded rather than suppressing everyone. The comparison covers the same division, including DA settings, with at least ten complete people. Equal totals share a position. No peer identities, scores or ranks beyond ten are returned. `reason` explains unavailable results; ST has no invented point/rank model.
+
+`tests/rolling-rank.sql` verifies the real SQL permissions, cohort rules, corrections and data boundaries using synthetic fixtures inside a transaction that ends in `ROLLBACK`.
+
 ## Checks
 
 `pnpm typecheck` and `pnpm test`. Reader safety/type tests run without private data; original workbook integration cases are skipped when their private source folders are absent. Live API/database acceptance is documented separately and must use the SEC project, never another application's database. No credentials or employee workbooks are included here.
