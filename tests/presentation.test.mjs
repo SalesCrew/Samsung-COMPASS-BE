@@ -8,7 +8,17 @@ test('presentation uses only a dedicated unlinked IM test account and its own as
  const d=imPresentation(profile,settings,'2026-10-30');assert.equal(d.profile.person_id,settings.personId);assert.equal(profile.person_id,null);
  assert.equal(d.assignments[0].market,settings.market);assert.equal(d.presentation,true);assert.equal(d.testReplay,false);
  assert.ok(d.reports.every(r=>r.person_id===settings.personId&&r.assignment_id===settings.assignmentId&&r.import_id==='presentation-only'));
- assert.ok(Object.values(d.rankings).every(r=>r.rank===null&&r.pool===0));
+ assert.equal(d.rankings['2026-09'].rank,3);assert.equal(d.rankings['2026-09'].pool,28);
+ assert.ok(Object.values(d.rankings).slice(0,11).every(r=>r.rank===null&&r.reason==='incomplete-history'));
+ assert.ok(Object.values(d.rankings).slice(11).every(r=>r.rank===3&&!r.outsideTopTen));
+});
+test('presentation names the assessment for each requested example month without changing results',()=>{
+ const d=imPresentation(profile,settings,'2026-10-30');
+ const criterion=month=>d.reports.find(r=>r.payload.month===month).payload.qualitative.find(m=>m.key==='knowledge');
+ assert.equal(criterion('2026-08').label,'Wissenstest');
+ assert.equal(criterion('2026-09').label,'Mystery Shopping');
+ assert.equal(criterion('2026-08').achievement,94);assert.equal(criterion('2026-09').achievement,94);
+ assert.equal(criterion('2026-07').label,'Wissenstest / Mystery Shopping');
 });
 test('24 coherent closings have usable metrics, points, money and stable monthly identities',()=>{
  const d=imPresentation(profile,settings,'2026-10-30');assert.equal(d.reports.length,24);assert.equal(d.reports.at(-1).month,'2026-09-01');assert.equal(d.pointHistory.length,24);
