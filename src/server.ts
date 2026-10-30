@@ -4,6 +4,7 @@ import { authAdmin, publicAuth, userDatabase } from './supabase.ts';
 import { readWorkbook, type ServerSheet } from './workbook.ts';
 import { privacyMappings, validateClosing, validateWeekly, weeklyMappings, validateContext, sourcePeriod, type ImportContext } from './imports.ts';
 import { resolveImportPeople, type ImportPerson, type ImportAssignment } from './identity.ts';
+import { imPresentation, type PresentationSettings } from './presentation.ts';
 import { closingMappings, detectClosingGroup, excelMonth } from '../shared/closingImport.ts';
 import type { SourceColumnMapping, AdminMetric } from '../shared/admin.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -90,6 +91,14 @@ const server=createServer(async(req,res)=>{
   if(route==='/notice'&&method==='POST'){const b=await json(req);const{error}=await s.db.rpc('sec_ack_notice',{p_version:b.version});failDB(error);send(res,200,{ok:true});return;}
   if(route==='/dashboard'&&method==='GET'){
    const realCalendarDay=today();const testDay=url.searchParams.get('testDay');const testMonth=url.searchParams.get('testMonth')??testDay?.slice(0,7);let calendarDay=realCalendarDay;
+   if(s.profile.is_test){
+    const{data,error}=await s.db.rpc('sec_own_presentation');failDB(error);
+    if(data){
+     const settings=data as PresentationSettings,selected=url.searchParams.get('assignment');
+     if(selected&&selected!==settings.assignmentId)throw new APIError(403,'Marktzuordnung nicht freigegeben.');
+     send(res,200,imPresentation(s.profile,settings,realCalendarDay,selected));return;
+    }
+   }
    if(testMonth){
     if(!s.profile.is_test||s.profile.role!=='sec')throw new APIError(403,'Der Prüfmonat ist nur für freigegebene Testkonten verfügbar.');
     if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(testMonth)||testMonth>realCalendarDay.slice(0,7))throw new APIError(400,'Ungültiger Prüfmonat.');
@@ -106,7 +115,7 @@ const server=createServer(async(req,res)=>{
    const rankings=Object.fromEntries(await Promise.all([...new Set(reports.map(r=>String(r.month)))].map(async month=>{const{data,error}=await s.db.rpc('sec_own_rank',{p_assignment:selected,p_month:month});failDB(error);return[month.slice(0,7),data];})));
    send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports,weekly,read,pointHistory:history.data,rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
   }
-  if(route==='/read'&&method==='POST'){const b=await json(req);if(typeof b.reportId!=='string')throw new APIError(400,'Bericht fehlt.');const{error}=await s.db.from('sec_read_receipts').upsert({user_id:s.profile.user_id,report_id:b.reportId,read_at:new Date().toISOString()});failDB(error);send(res,200,{ok:true});return;}
+  if(route==='/read'&&method==='POST'){const b=await json(req);if(typeof b.reportId!=='string')throw new APIError(400,'Bericht fehlt.');if(s.profile.is_test){const{data,error}=await s.db.rpc('sec_read_presentation',{p_report:b.reportId});failDB(error);if(data){send(res,200,{ok:true});return;}}const{error}=await s.db.from('sec_read_receipts').upsert({user_id:s.profile.user_id,report_id:b.reportId,read_at:new Date().toISOString()});failDB(error);send(res,200,{ok:true});return;}
   if(route==='/privacy/requests'&&method==='GET'){send(res,200,{requests:await allRows(s.db,'sec_privacy_requests',s.profile.role==='sec'?{user_id:s.profile.user_id}:{},'created_at')});return;}
   if(route==='/privacy/requests'&&method==='POST'){
    const b=await json(req);if(!['access','correction','erasure','restriction','objection','portability'].includes(String(b.kind))||typeof b.message!=='string'||b.message.length>4000)throw new APIError(400,'Art und Nachricht prüfen.');

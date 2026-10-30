@@ -33,3 +33,9 @@ The private SQL projection is not executable by clients. Scoped invoker wrappers
 ## Checks
 
 `pnpm typecheck` and `pnpm test`. Reader safety/type tests run without private data; original workbook integration cases are skipped when their private source folders are absent. Live API/database acceptance is documented separately and must use the SEC project, never another application's database. No credentials or employee workbooks are included here.
+
+## Isolated presentation accounts
+
+An explicitly configured IM test login receives a wholly synthetic, calendar-aware dashboard with 24 monthly closings and current-month cumulative weekly stands. Its virtual person/market IDs and read markers live only in the private presentation configuration; no people, assignments, imports, reports or weekly business rows are created. The stored login has no employee link, cannot read real SEC rows, and cannot be reassigned to a real employee while presentation configuration exists. Real admin charts and ranking inputs are therefore unchanged.
+
+Presentation dashboard and acknowledgement RPCs validate the live owner/session and dedicated account scope. `tests/presentation-isolation.sql` verifies permissions, durable read markers and isolation inside a transaction ending in ROLLBACK. No presentation credentials belong in this repository.
