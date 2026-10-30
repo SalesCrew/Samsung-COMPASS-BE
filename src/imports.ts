@@ -1,3 +1,4 @@
+import {groupProjectAssessment} from '../shared/projectAssessment.ts';
 import { groupMetricBlocks, type DASetting, type MetricDefinition, type SECGroup } from '../shared/groups.ts';
 import { closingDefinitions, closingMappingError, prepareClosing, type ClosingRecord, type ImportedCell } from '../shared/closingImport.ts';
 import type { AdminMetric, ExcelCell, ImportPhase, SourceColumnMapping } from '../shared/admin.ts';
@@ -37,10 +38,10 @@ export function normalizeClosing(record:ClosingRecord,ctx:ImportContext):Normali
   });
   // Preserve supplied qualitative columns individually; do not invent a combined score or missing weights.
   const source=closingDefinitions(ctx.group,ctx.metrics??[]);
-  const qualitative=source.filter(d=>d.dataset==='softbonus'&&d.field!=='softbonus.overall'&&f[d.field]).map(d=>{
+  const qualitative=groupProjectAssessment(source.filter(d=>d.dataset==='softbonus'&&d.field!=='softbonus.overall'&&f[d.field]).map(d=>{
     const configured=ctx.metrics?.find(m=>d.field==='softbonus.config.'+m.id+'.achievement');
     return{key:configured?.id??d.field,label:configured?.label??d.label.replace(/\s+/g,' '),unit:'%',weight:configured?.weight??null,icon:'check',resultState:state(f[d.field]),achievement:percent(f[d.field]),actual:null,target:null};
-  });
+  }));
   const categoryCell=f['annual.monthPoints'];
   const suppliedPoints=numeric(categoryCell);
   const category=text(f['annual.monthCategory'])||text(categoryCell);

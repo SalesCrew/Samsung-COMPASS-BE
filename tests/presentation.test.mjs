@@ -42,3 +42,10 @@ test('publication window and cumulative weekly updates follow the actual calenda
  assert.ok(imPresentation(profile,settings,'2027-02-28').weekly.every(w=>w.as_of<='2027-02-28'));
  assert.throws(()=>imPresentation(profile,settings,'2026-02-30'));
 });
+test('isolated presentation contains six PL details with coherent values and a separate own premium history',()=>{
+ const d=imPresentation(profile,settings,'2026-10-30');assert.equal(d.premiumHistory.length,24);
+ const row=d.reports.at(-1),project=row.payload.qualitative.find(m=>m.key==='project');
+ assert.equal(project.achievement,93);assert.equal(project.details.length,6);assert.equal(project.details.reduce((n,item)=>n+item.achievement,0)/6,93);
+ assert.ok(project.details.every(item=>item.achievement>=0&&item.achievement<=100));
+ assert.deepEqual(d.premiumHistory.at(-1),{month:'2026-09',premium:row.payload.premium,extrasAvailable:true,extras:row.payload.extras});
+});

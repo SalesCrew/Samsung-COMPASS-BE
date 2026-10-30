@@ -1,4 +1,6 @@
 import { IM_METRICS, qualitativeMetrics, performanceTier } from '../shared/groups.ts';
+import { presentationProjectDetails } from '../shared/projectAssessment.ts';
+import { ownPremiumHistory } from './premiumHistory.ts';
 import { presentationAssessmentLabel } from '../shared/presentationAssessments.ts';
 
 export type PresentationSettings={personId:string;assignmentId:string;market:string;readIds:string[]};
@@ -27,7 +29,7 @@ export function imPresentation<T extends PresentationProfile>(profile:T,settings
   });
   const qualitative=qualitativeMetrics('IM').map((metric,i)=>{
    const achievement=points===3?[98,100,97][i]:points===2?[93,94,92][i]:[86,85,88][i];
-   return{...metric,label:metric.key==='knowledge'?presentationAssessmentLabel(month,metric.label):metric.label,resultState:'value' as const,target:100,actual:achievement,achievement};
+   return{...metric,label:metric.key==='knowledge'?presentationAssessmentLabel(month,metric.label):metric.label,resultState:'value' as const,target:100,actual:achievement,achievement,...(metric.key==='project'?{details:presentationProjectDetails(achievement)}:{})};
   });
   const sellout=weighted(metrics),softbonus=weighted(qualitative);
   const id='presentation-'+settings.assignmentId+'-'+month;
@@ -47,6 +49,7 @@ export function imPresentation<T extends PresentationProfile>(profile:T,settings
  });
  return{presentation:true,profile:{...profile,person_id:settings.personId},assignments:[assignment],selectedAssignment:assignment.id,
   reports,weekly,read:settings.readIds.filter(id=>reports.some(r=>r.id===id)).map(report_id=>({report_id})),
+  premiumHistory:ownPremiumHistory(reports,settings.personId,'IM'),
   pointHistory:reports.map(r=>({month:r.month.slice(0,7),points:r.payload.points,sourceLevel:null})),
   rankings:Object.fromEntries(months.map((month,index)=>[month,index<11
    ?{pool:28,rank:null,outsideTopTen:false,reason:'incomplete-history'}
