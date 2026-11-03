@@ -15,7 +15,9 @@ export function imPresentation<T extends PresentationProfile>(profile:T,settings
  if(!profile.is_test||profile.role!=='sec'||profile.primary_department!=='IM'||profile.person_id!==null)throw new Error('Isolated IM presentation account required');
  if(requestedAssignment&&requestedAssignment!==settings.assignmentId)throw new RangeError('Own presentation assignment required');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||new Date(day+'T12:00:00Z').toISOString().slice(0,10)!==day)throw new RangeError('Valid calendar day required');
- const through=monthAt(day.slice(0,7),Number(day.slice(8))>=15?-1:-2);
+ // Keep the approved presentation stable across month changes; real accounts use their live calendar.
+ const presentationDay='2026-10-30';
+ const through=monthAt(presentationDay.slice(0,7),Number(presentationDay.slice(8))>=15?-1:-2);
  const months=Array.from({length:24},(_,index)=>monthAt(through,index-23));
  const assignment={id:settings.assignmentId,person_id:settings.personId,department_id:'IM',setting:'full',market:settings.market,active:true};
  const reports=months.map(month=>{
@@ -39,9 +41,9 @@ export function imPresentation<T extends PresentationProfile>(profile:T,settings
     tier:performanceTier('IM',sellout,softbonus),points,premium:round((points===3?1360:points===2?990:650)+index%4*37.5),
     extrasAvailable:true,extras:index%3===0?[{type:'On-top',amount:150+index%4*25}]:[],metrics,qualitative,changed:[]}};
  });
- const currentMonth=day.slice(0,7),targets=[50,80,1120,44,24,130],stages=[0,.23,.47,.72,.96];
+ const currentMonth=presentationDay.slice(0,7),targets=[50,80,1120,44,24,130],stages=[0,.23,.47,.72,.96];
  const weekly=[1,8,15,22,29].flatMap((date,index)=>{
-  const asOf=currentMonth+'-'+String(date).padStart(2,'0');if(asOf>day)return[];
+  const asOf=currentMonth+'-'+String(date).padStart(2,'0');if(asOf>presentationDay)return[];
   return[{id:'presentation-weekly-'+settings.assignmentId+'-'+asOf,person_id:settings.personId,assignment_id:settings.assignmentId,
    department_id:'IM',month:currentMonth+'-01',as_of:asOf,revision:1,published_at:asOf+'T08:00:00Z',
    payload:{setting:'full',metrics:IM_METRICS.map((metric,i)=>({ ...metric,target:targets[i],
@@ -54,5 +56,5 @@ export function imPresentation<T extends PresentationProfile>(profile:T,settings
   rankings:Object.fromEntries(months.map((month,index)=>[month,index<11
    ?{pool:28,rank:null,outsideTopTen:false,reason:'incomplete-history'}
    :{pool:28,rank:3,outsideTopTen:false}])),
-  calendarDay:day,realCalendarDay:day,testReplay:false};
+  calendarDay:presentationDay,realCalendarDay:day,testReplay:false};
 }

@@ -30,16 +30,20 @@ test('24 coherent closings have usable metrics, points, money and stable monthly
  const next=imPresentation(profile,settings,'2026-11-16');for(const r of d.reports.slice(1))assert.deepEqual(next.reports.find(x=>x.id===r.id),r);
  const known=d.reports.at(-1).id;assert.deepEqual(imPresentation(profile,{...settings,readIds:[known,'foreign-report']},'2026-10-30').read,[{report_id:known}]);
 });
-test('publication window and cumulative weekly updates follow the actual calendar, including year rollover',()=>{
- assert.equal(imPresentation(profile,settings,'2026-11-14').reports.at(-1).month,'2026-09-01');
- assert.equal(imPresentation(profile,settings,'2026-11-15').reports.at(-1).month,'2026-10-01');
- assert.equal(imPresentation(profile,settings,'2027-01-03').reports.at(-1).month,'2026-11-01');
- const d=imPresentation(profile,settings,'2026-10-30');assert.deepEqual(d.weekly.map(w=>w.as_of),['2026-10-01','2026-10-08','2026-10-15','2026-10-22','2026-10-29']);
- assert.ok(d.weekly[0].payload.metrics.every(m=>m.actual===null));
- const units=d.weekly.slice(1).map(w=>w.payload.metrics[0].actual);assert.ok(units.every((v,i)=>i===0||v>units[i-1]));
- assert.ok(imPresentation(profile,settings,'2026-10-14').weekly.every(w=>w.as_of<='2026-10-14'));
- assert.deepEqual(imPresentation(profile,settings,'2026-11-01').weekly.map(w=>w.as_of),['2026-11-01']);
- assert.ok(imPresentation(profile,settings,'2027-02-28').weekly.every(w=>w.as_of<='2027-02-28'));
+test('presentation stays on its approved October snapshot across month and year changes',()=>{
+ const baseline=imPresentation(profile,settings,'2026-10-30');
+ const expected=['2026-10-01','2026-10-08','2026-10-15','2026-10-22','2026-10-29'];
+ for(const day of ['2026-10-31','2026-11-01','2026-11-03','2026-11-15','2027-01-03','2027-02-28']){
+  const data=imPresentation(profile,settings,day);
+  assert.equal(data.calendarDay,'2026-10-30');assert.equal(data.realCalendarDay,day);
+  assert.equal(data.reports.at(-1).month,'2026-09-01');
+  assert.deepEqual(data.reports,baseline.reports);assert.deepEqual(data.weekly,baseline.weekly);
+  assert.deepEqual(data.weekly.map(w=>w.as_of),expected);
+  assert.equal(data.weekly.at(-1).payload.metrics[0].actual,50);
+  assert.equal(data.weekly.at(-1).payload.metrics[0].actual-data.weekly.at(-2).payload.metrics[0].actual,12);
+  assert.ok(!data.reports.some(r=>r.month==='2026-10-01'));
+ }
+ assert.ok(baseline.weekly[0].payload.metrics.every(m=>m.actual===null));
  assert.throws(()=>imPresentation(profile,settings,'2026-02-30'));
 });
 test('isolated presentation contains six PL details with coherent values and a separate own premium history',()=>{
