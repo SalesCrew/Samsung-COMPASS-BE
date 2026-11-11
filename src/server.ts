@@ -6,11 +6,12 @@ import { privacyMappings, validateClosing, validateWeekly, weeklyMappings, valid
 import { resolveImportPeople, type ImportPerson, type ImportAssignment } from './identity.ts';
 import {ownPremiumHistory} from './premiumHistory.ts';
 import { imPresentation, type PresentationSettings } from './presentation.ts';
+import { isAdminRole, supervisorRouteAllowed, type AccountRole } from './access.ts';
 import { closingMappings, detectClosingGroup, excelMonth } from '../shared/closingImport.ts';
 import type { SourceColumnMapping, AdminMetric } from '../shared/admin.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-type Profile={user_id:string;email:string;display_name:string;role:'app_admin'|'department_admin'|'sec';department_ids:string[];person_id:string|null;primary_department:string|null;setting:string;active:boolean;must_change_password:boolean;is_test:boolean};
+type Profile={user_id:string;email:string;display_name:string;role:AccountRole;department_ids:string[];person_id:string|null;primary_department:string|null;setting:string;active:boolean;must_change_password:boolean;is_test:boolean};
 type Session={token:string;profile:Profile;db:SupabaseClient};
 class APIError extends Error { status:number;code:string;constructor(status:number,message:string,code='REQUEST_FAILED'){super(message);this.status=status;this.code=code;} }
 const origins=new Set((process.env.FRONTEND_ORIGINS??'http://127.0.0.1:4319,http://localhost:4319').split(',').map(s=>s.trim()));
@@ -32,7 +33,7 @@ async function session(req:IncomingMessage):Promise<Session>{
 }
 function admin(s:Session,department?:string){
  if(s.profile.must_change_password)throw new APIError(403,'Bitte zuerst dein Passwort ändern.','PASSWORD_CHANGE_REQUIRED');
- if(s.profile.role==='sec'||department&&s.profile.role!=='app_admin'&&!s.profile.department_ids.includes(department))throw new APIError(403,'Für diesen Bereich fehlen dir die Rechte.','FORBIDDEN');
+ if(!isAdminRole(s.profile.role)||department&&s.profile.role!=='app_admin'&&!s.profile.department_ids.includes(department))throw new APIError(403,'Für diesen Bereich fehlen dir die Rechte.','FORBIDDEN');
 }
 async function allRows(db:SupabaseClient,table:string,filters:Record<string,string>={},order='created_at'){
  const rows:Record<string,unknown>[]=[];
@@ -89,8 +90,21 @@ const server=createServer(async(req,res)=>{
    send(res,200,{ok:true,signInAgain:true});return;
   }
   if(s.profile.must_change_password)throw new APIError(403,'Bitte zuerst dein Passwort ändern.','PASSWORD_CHANGE_REQUIRED');
+  if(s.profile.role==='supervisor'&&!supervisorRouteAllowed(route,method))throw new APIError(403,'Der Supervisorzugang ist ausschließlich zum Ansehen freigegeben.','READ_ONLY');
   if(route==='/notice'&&method==='POST'){const b=await json(req);const{error}=await s.db.rpc('sec_ack_notice',{p_version:b.version});failDB(error);send(res,200,{ok:true});return;}
+  if(route==='/supervisor/people'&&method==='GET'){
+   if(s.profile.role!=='supervisor')throw new APIError(403,'Supervisorzugang erforderlich.','FORBIDDEN');
+   const{data,error}=await s.db.rpc('sec_supervisor_directory');failDB(error);send(res,200,{people:data});return;
+  }
   if(route==='/dashboard'&&method==='GET'){
+   if(s.profile.role==='supervisor'){
+    if(url.searchParams.has('testMonth')||url.searchParams.has('testDay'))throw new APIError(403,'Prüfstände sind für diesen Zugang nicht freigegeben.','FORBIDDEN');
+    const assignment=url.searchParams.get('assignment');
+    if(assignment&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assignment))throw new APIError(400,'Ungültige SEC-Auswahl.');
+    const{data,error}=await s.db.rpc('sec_supervisor_dashboard',{p_assignment:assignment||null});failDB(error);
+    const{premiumRows,...dashboard}=data;
+    send(res,200,{...dashboard,profile:s.profile,readOnly:true,premiumHistory:dashboard.subject?ownPremiumHistory(premiumRows,dashboard.subject.person_id,dashboard.subject.primary_department):[],calendarDay:today()});return;
+   }
    const realCalendarDay=today();const testDay=url.searchParams.get('testDay');const testMonth=url.searchParams.get('testMonth')??testDay?.slice(0,7);let calendarDay=realCalendarDay;
    if(s.profile.is_test){
     const{data,error}=await s.db.rpc('sec_own_presentation');failDB(error);
@@ -145,7 +159,7 @@ const server=createServer(async(req,res)=>{
   if(route==='/admin/people'&&method==='GET'){send(res,200,{people:await allRows(s.db,'sec_people',{},'created_at'),assignments:await allRows(s.db,'sec_assignments',{},'created_at')});return;}
   if(route==='/admin/accounts'&&method==='POST'){
    const b=await json(req);const role=b.role??'sec';const departments=b.department_ids;
-   if(typeof b.email!=='string'||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)||!Array.isArray(departments)||!departments.every(x=>['HE','DA','IM','LH','ST'].includes(String(x)))||!['sec','department_admin','app_admin'].includes(String(role)))throw new APIError(400,'Kontodaten prüfen.');
+   if(typeof b.email!=='string'||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)||!Array.isArray(departments)||!departments.every(x=>['HE','DA','IM','LH','ST'].includes(String(x)))||!['sec','department_admin','app_admin','supervisor'].includes(String(role)))throw new APIError(400,'Kontodaten prüfen.');
    if(s.profile.role!=='app_admin'&&(role!=='sec'||departments.some(d=>!s.profile.department_ids.includes(String(d)))))throw new APIError(403,'Rolle oder Bereich nicht freigegeben.');
    const password=randomBytes(18).toString('base64url')+'aA9!';const created=await authAdmin.auth.admin.createUser({email:b.email,password,email_confirm:true});
    if(created.error||!created.data.user)throw new APIError(400,'Konto konnte nicht erstellt werden. Prüfe, ob die E-Mail schon verwendet wird.');

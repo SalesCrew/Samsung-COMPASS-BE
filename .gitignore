@@ -5,3 +5,5 @@ work/
 outputs/
 *.tsbuildinfo
 .DS_Store
+
+supabase/.temp/
