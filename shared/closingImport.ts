@@ -133,7 +133,7 @@ function convertedCell(cell: ExcelCell, dataType: ColumnDataType): ExcelCell {
   if (cell.kind !== 'value') return cell;
   if (dataType === 'text') return { ...cell, value: String(cell.value ?? '') };
   if (typeof cell.value !== 'string' || !['number', 'currency', 'percent'].includes(dataType)) return cell;
-  let text = cell.value.trim().replace(/\s|€|EUR/gi, '');
+  let text = cell.value.trim().replace(/\s|€|EUR/gi, '').replace(/−/g, '-');
   if (/^(?:x|n\/?a|n\.a\.)$/i.test(text) || !text) return cell;
   const percent = text.endsWith('%');
   text = text.replace(/%$/, '');

@@ -2,7 +2,7 @@ import type { NormalizedRow } from './imports.ts';
 
 export type ImportPerson={id:string;external_id:string;name:string};
 export type ImportAssignment={person_id:string;department_id:string;setting:string;market:string};
-export type IdentityMatch={row:number;sourceName:string;sourceExternalId:string;sourceMarket:string;personId:string|null;status:'matched'|'unresolved'|'new';method:'id'|'name'|'fuzzy'|'market'|'manual'|'new'|null;score:number|null;message:string};
+export type IdentityMatch={row:number;sourceName:string;sourceExternalId:string;sourceMarket:string;personId:string|null;status:'matched'|'unresolved'|'new'|'skipped';method:'id'|'name'|'fuzzy'|'market'|'manual'|'new'|'vacant'|'manual-skip'|null;score:number|null;message:string};
 
 /** Token sorting makes case, accents, separators and surname order irrelevant. */
 export function nameKey(value:string){return value.normalize('NFKD').replace(/\p{M}/gu,'').toLocaleLowerCase('de-AT').replace(/ß/g,'ss').split(/[^\p{L}\p{N}]+/u).filter(Boolean).sort().join(' ');}

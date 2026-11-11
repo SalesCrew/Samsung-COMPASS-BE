@@ -58,3 +58,9 @@ test('invalid and not-applicable metrics do not become zero; an empty group has 
  assert.deepEqual(supervisorGroup(source([],[]),'IM','2026-11-11'),{groupId:'IM',calendarDay:'2026-11-11',members:0,months:[],weekly:{month:'2026-11',stands:[]}});
  const st=row('a');st.department_id='ST';const d=supervisorGroup(source(['a'],[st]),'ST','2026-11-11');assert.equal(d.months[0].metrics.length,0);assert.equal(d.months[0].rolling.points.value,null);
 });
+
+test('negative weekly values remain known and contribute to signed means and week changes',()=>{
+ const weekly=[];for(const [person,day,actual]of[['a','08',-5],['b','08',3],['a','15',-2],['b','15',-1]]){const r=row(person,'2026-11');r.as_of='2026-11-'+day;r.published_at=r.as_of+'T08:00:00Z';r.payload.metrics=[metric(null,{actual,target:10})];weekly.push(r);}
+ const stands=supervisorGroup(source(['a','b'],[],{weekly}),'IM','2026-11-20').weekly.stands;
+ assert.deepEqual(stands[0].metrics[0].actual,{value:-1,known:2,total:2});assert.equal(stands[0].metrics[0].achievement.value,-10);assert.deepEqual(stands[1].metrics[0].change,{value:-.5,known:2,total:2});
+});

@@ -71,7 +71,7 @@ export function weeklyMappings(sheet:ServerSheet,ctx:ImportContext):SourceColumn
   const find=(labels:string[])=>sheet.columns.find(c=>labels.some(l=>c.label.trim().toLowerCase()===l))?.key??'';
   add(find(['sec id','promoter id']),'SEC ID','person.externalId','text',true);
   add(find(['store','markt','market']),'Markt','assignment.market','text',true);
-  add(find(['name','sec name','promoter name']),'Name','person.name','text');
+  add(find(['name','sec name','promoter name','sec']),'Name','person.name','text');
   const he=ctx.group==='HE'&&sheet.columns.find(c=>c.key==='F')?.label==='TGT'&&sheet.columns.find(c=>c.key==='D')?.label==='SEC ID';
   const tracker=['DA','IM'].includes(ctx.group)&&sheet.columns.find(c=>c.key==='C')?.label==='Store'&&sheet.columns.find(c=>c.key==='D')?.label==='SEC';
   if(he)mappings.find(m=>m.field==='person.name')!.column='C';
@@ -90,7 +90,7 @@ export function weeklyMappings(sheet:ServerSheet,ctx:ImportContext):SourceColumn
 }
 function convert(cell:ExcelCell,type:SourceColumnMapping['dataType']):ExcelCell{
   if(cell.kind!=='value'||typeof cell.value!=='string'||type==='text')return type==='text'&&cell.kind==='value'?{...cell,value:String(cell.value??'')}:cell;
-  let s=cell.value.trim().replace(/\s|€|EUR/gi,'');const p=s.endsWith('%');s=s.replace(/%$/,'');
+  let s=cell.value.trim().replace(/\s|€|EUR/gi,'').replace(/−/g,'-');const p=s.endsWith('%');s=s.replace(/%$/,'');
   if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');
   return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(s)?{...cell,value:Number(s)/(p?100:1)}:cell;
 }
@@ -124,7 +124,6 @@ export function validateWeekly(sheet:ServerSheet,mappings:SourceColumnMapping[],
       const target=tm?.dataType==='percent'?percent(tc):numeric(tc);
       const sourceActual=am?.dataType==='percent'?percent(ac):numeric(ac);
       if(target===null||target<0)issues.push({row:r.row,column:tm?.column??'',message:m.label+': Monatsziel fehlt oder ist ungültig.'});
-      if(sourceActual!==null&&sourceActual<0)issues.push({row:r.row,column:am?.column??'',message:m.label+': Istwert ist ungültig.'});
       if(ctx.phase==='TARGET_INITIALIZATION'&&sourceActual!==null&&sourceActual!==0)issues.push({row:r.row,column:am?.column??'',message:'Targetbasis enthält bereits Istwerte. Als Wochenstand importieren.'});
       if(ac?.kind==='value'&&typeof ac.value==='string'&&/^(?:x|n\/?a|n\.a\.)$/i.test(ac.value.trim()))specialValues++;
       else if(ac?.kind==='value'&&sourceActual===null&&ac.value!=='')issues.push({row:r.row,column:am?.column??'',message:m.label+': Istwert nicht lesbar.'});

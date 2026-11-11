@@ -23,7 +23,7 @@ function metricGroups(rows:Row[],members:GroupSource['members'],kind:'metrics'|'
   const setting=row.payload.setting??'full';
   const metrics=kind==='qualitative'?groupProjectAssessment((row.payload.qualitative??[]) as Parameters<typeof groupProjectAssessment>[0]) as Metric[]:row.payload.metrics??[];
   for(const original of metrics){
-   const metric=weekly?{...original,actual:finite(original.actual)&&original.actual>=0?original.actual:null,target:finite(original.target)&&original.target>0?original.target:null,achievement:finite(original.actual)&&original.actual>=0&&finite(original.target)&&original.target>0?original.actual/original.target*100:null}:original;
+   const metric=weekly?{...original,actual:finite(original.actual)?original.actual:null,target:finite(original.target)&&original.target>0?original.target:null,achievement:finite(original.actual)&&finite(original.target)&&original.target>0?original.actual/original.target*100:null}:original;
    const id=metricId(metric,setting);definitions.set(id,{metric,setting});
    if(!byPerson.has(id))byPerson.set(id,new Map());const people=byPerson.get(id)!;
    people.set(row.person_id,[...(people.get(row.person_id)??[]),metric]);
@@ -82,7 +82,7 @@ export function supervisorGroup(source:GroupSource,groupId:SupervisorGroupData['
  // Weekly improvement uses only paired, comparable people on adjacent dated stands.
  for(let i=1;i<stands.length;i++)for(const metric of stands[i].metrics){
   const changes=members.filter(p=>p.setting===metric.setting).map(p=>{
-   const own=(asOf:string)=>agreed(weekly.filter(r=>r.as_of===asOf&&r.person_id===p.person_id).map(r=>(()=>{const m=r.payload.metrics?.find(m=>metricId(m,r.payload.setting??'full')===metric.id);return m&&finite(m.actual)&&m.actual>=0&&!['missing','invalid','not-applicable'].includes(m.resultState??'')?m.actual:null;})()));
+   const own=(asOf:string)=>agreed(weekly.filter(r=>r.as_of===asOf&&r.person_id===p.person_id).map(r=>(()=>{const m=r.payload.metrics?.find(m=>metricId(m,r.payload.setting??'full')===metric.id);return m&&finite(m.actual)&&!['missing','invalid','not-applicable'].includes(m.resultState??'')?m.actual:null;})()));
    const current=own(stands[i].asOf),previous=own(stands[i-1].asOf);return current!==null&&previous!==null?current-previous:null;
   });metric.change=mean(changes,changes.length);
  }
