@@ -7,6 +7,7 @@ import { resolveImportPeople, type ImportPerson, type ImportAssignment } from '.
 import {ownPremiumHistory} from './premiumHistory.ts';
 import { imPresentation, type PresentationSettings } from './presentation.ts';
 import { isAdminRole, supervisorRouteAllowed, type AccountRole } from './access.ts';
+import { supervisorGroup, type GroupSource } from './supervisorGroup.ts';
 import { closingMappings, detectClosingGroup, excelMonth } from '../shared/closingImport.ts';
 import type { SourceColumnMapping, AdminMetric } from '../shared/admin.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -95,6 +96,12 @@ const server=createServer(async(req,res)=>{
   if(route==='/supervisor/people'&&method==='GET'){
    if(s.profile.role!=='supervisor')throw new APIError(403,'Supervisorzugang erforderlich.','FORBIDDEN');
    const{data,error}=await s.db.rpc('sec_supervisor_directory');failDB(error);send(res,200,{people:data});return;
+  }
+  const groupMatch=route.match(/^\/supervisor\/groups\/(HE|DA|IM|LH|ST)$/);
+  if(groupMatch&&method==='GET'){
+   if(s.profile.role!=='supervisor')throw new APIError(403,'Supervisorzugang erforderlich.','FORBIDDEN');
+   const{data,error}=await s.db.rpc('sec_supervisor_group_source',{p_department:groupMatch[1]});failDB(error);
+   send(res,200,supervisorGroup(data as GroupSource,groupMatch[1] as Parameters<typeof supervisorGroup>[1],today()));return;
   }
   if(route==='/dashboard'&&method==='GET'){
    if(s.profile.role==='supervisor'){

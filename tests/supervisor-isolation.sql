@@ -32,8 +32,16 @@ insert into public.sec_monthly_reports(person_id,assignment_id,department_id,mon
 grant select on supervisor_actor to authenticated;
 select set_config('request.jwt.claims',jsonb_build_object('sub',user_id,'role','authenticated','session_id',session_id,'aal','aal1')::text,true) from supervisor_actor where n=1;
 set local role authenticated;
-do $$declare directory jsonb;d jsonb;a uuid;t record;begin
+do $$declare directory jsonb;d jsonb;g jsonb;division text;a uuid;t record;begin
  directory:=public.sec_supervisor_directory();
+ foreach division in array array['HE','DA','IM','LH','ST'] loop
+  g:=public.sec_supervisor_group_source(division);
+  if exists(select 1 from jsonb_array_elements(g->'reports') entry where entry->>'department_id'<>division) then raise exception 'Group source mixed divisions';end if;
+  if exists(select 1 from jsonb_array_elements(g->'reports') entry where not exists(select 1 from jsonb_array_elements(g->'members') member where member->>'person_id'=entry->>'person_id')) then raise exception 'Group source mixed membership';end if;
+  if exists(select 1 from jsonb_array_elements(g->'members') entry where entry?'email' or entry?'user_id') then raise exception 'Group source exposes account details';end if;
+ end loop;
+ begin perform public.sec_supervisor_group_source('invalid');raise exception 'Invalid group accepted';exception when invalid_parameter_value then null;end;
+
  if (select count(*) from jsonb_array_elements(directory) x join supervisor_actor fixture on fixture.assignment_id=(x->>'assignment_id')::uuid)<>5 then raise exception 'Directory eligibility incorrect';end if;
  if exists(select 1 from jsonb_array_elements(directory) x where x?'email' or x?'user_id') then raise exception 'Directory exposes unnecessary account information';end if;
  if sec_private.is_app_admin() or cardinality(sec_private.department_scope())<>0 then raise exception 'Supervisor gained admin scope';end if;
@@ -60,6 +68,7 @@ set local role authenticated;
 do $$begin
  perform public.sec_own_point_history((select assignment_id from supervisor_actor where n=2));
  begin perform public.sec_own_point_history((select assignment_id from supervisor_actor where n=5));raise exception 'Cross-SEC history accepted';exception when insufficient_privilege then null;end;
+ begin perform public.sec_supervisor_group_source('IM');raise exception 'SEC group source accepted';exception when insufficient_privilege then null;end;
  begin perform public.sec_supervisor_directory();raise exception 'SEC directory accepted';exception when insufficient_privilege then null;end;
  begin perform public.sec_supervisor_dashboard(null);raise exception 'SEC supervisor dashboard accepted';exception when insufficient_privilege then null;end;
 end $$;
@@ -68,6 +77,7 @@ reset role;
 select set_config('request.jwt.claims',jsonb_build_object('sub',user_id,'role','authenticated','session_id',session_id,'aal','aal1')::text,true) from supervisor_actor where n=4;
 set local role authenticated;
 do $$begin
+ begin perform public.sec_supervisor_group_source('IM');raise exception 'Group initial-password gate bypassed';exception when insufficient_privilege then null;end;
  begin perform public.sec_supervisor_directory();raise exception 'Initial-password gate bypassed';exception when insufficient_privilege then null;end;
 end $$;
 reset role;
@@ -82,7 +92,7 @@ set local role authenticated;
 do $$begin begin perform public.sec_supervisor_directory();raise exception 'Revoked session accepted';exception when insufficient_privilege then null;end;end $$;
 reset role;
 set local role anon;
-do $$begin begin perform public.sec_supervisor_directory();raise exception 'Anonymous directory accepted';exception when insufficient_privilege then null;end;end $$;
+do $$begin begin perform public.sec_supervisor_directory();raise exception 'Anonymous directory accepted';exception when insufficient_privilege then null;end;begin perform public.sec_supervisor_group_source('IM');raise exception 'Anonymous group source accepted';exception when insufficient_privilege then null;end;end $$;
 reset role;
 rollback;
 select 'supervisor read-only scope, eligibility, subject views, first-password gate and revocation passed; fixtures rolled back' as verification;

@@ -8,6 +8,9 @@ test('supervisors and SECs never pass the administrator role guard',()=>{
 });
 test('supervisors may browse dashboards and manage only their own login/privacy',()=>{
  for(const path of ['/dashboard','/supervisor/people','/me','/privacy/export','/privacy/requests'])assert(supervisorRouteAllowed(path,'GET'));
+ for(const division of ['HE','DA','IM','LH','ST'])assert(supervisorRouteAllowed('/supervisor/groups/'+division,'GET'));
+ for(const method of ['POST','PATCH','DELETE'])assert.equal(supervisorRouteAllowed('/supervisor/groups/HE',method),false);
+ assert.equal(supervisorRouteAllowed('/supervisor/groups/invalid','GET'),false);
  for(const path of ['/auth/password','/auth/logout','/notice','/privacy/requests'])assert(supervisorRouteAllowed(path,'POST'));
  for(const path of ['/read','/admin/data','/admin/accounts','/admin/accounts/id/reset-password','/admin/password','/imports/preview','/imports/stage','/imports/publish','/admin/configurations','/admin/security']){
   for(const method of ['GET','POST','PATCH','DELETE'])assert.equal(supervisorRouteAllowed(path,method),false,path+' '+method);

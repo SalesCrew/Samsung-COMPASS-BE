@@ -1,0 +1,4 @@
+export type GroupMean={value:number|null;known:number;total:number};
+export type GroupAverageMetric={id:string;label:string;unit:string;block:string;setting:string;achievement:GroupMean;actual:GroupMean;target:GroupMean;weight:number|null;details?:GroupAverageMetric[];change?:GroupMean};
+export type GroupAverageMonth={month:string;reported:number;publishedAt:string|null;sellout:GroupMean;softbonus:GroupMean;points:GroupMean;premium:GroupMean;extras:GroupMean;metrics:GroupAverageMetric[];qualitative:GroupAverageMetric[];rolling:{fromMonth:string;points:GroupMean;premium:GroupMean;extras:GroupMean;levels:{SEC:number;'SEC+':number;'SEC Pro':number;unknown:number}}};
+export type SupervisorGroupData={groupId:'HE'|'DA'|'IM'|'LH'|'ST';calendarDay:string;members:number;months:GroupAverageMonth[];weekly:{month:string;stands:{asOf:string;updatedAt:string;metrics:GroupAverageMetric[]}[]}};

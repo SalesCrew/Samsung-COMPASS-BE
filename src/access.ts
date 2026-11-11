@@ -6,6 +6,6 @@ export function isAdminRole(role: AccountRole) {
 
 /** Supervisors can inspect SEC dashboards and manage only their own login/privacy. */
 export function supervisorRouteAllowed(route: string, method: string) {
-  if (method === 'GET') return ['/me', '/dashboard', '/supervisor/people', '/privacy/requests', '/privacy/export'].includes(route);
+  if (method === 'GET') return ['/me', '/dashboard', '/supervisor/people', '/privacy/requests', '/privacy/export'].includes(route)||/^\/supervisor\/groups\/(HE|DA|IM|LH|ST)$/.test(route);
   return method === 'POST' && ['/auth/logout', '/auth/password', '/notice', '/privacy/requests'].includes(route);
 }
