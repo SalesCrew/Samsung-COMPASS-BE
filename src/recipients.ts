@@ -76,7 +76,7 @@ export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],ass
   for(const recipient of recipients){
    const person=people.find(p=>p.id===recipient.personId)!;
    const metrics=(row.normalized.metrics??[]) as {key:string;block?:string}[];
-   const normalized=recipient.departmentId==='LH'&&ctx.group!=='LH'?{groupId:'LH',month:ctx.month,setting:'full',phase:ctx.phase,configurationVersion:ctx.configurationVersion,sourceGroup:ctx.group,metrics:metrics.map(m=>({...m,key:ctx.group.toLowerCase()+'-'+m.key,block:ctx.group}))}:row.normalized;
+   const normalized=recipient.departmentId==='LH'&&ctx.group!=='LH'?{groupId:'LH',month:ctx.month,setting:'full',phase:ctx.phase,configurationVersion:ctx.configurationVersion,sourceGroup:ctx.group,...(ctx.targetPeriod?{targetPeriod:ctx.targetPeriod}:{}),metrics:metrics.map(m=>({...m,key:ctx.group.toLowerCase()+'-'+m.key,block:ctx.group}))}:row.normalized;
    records.push({...row,externalId:person.external_id,name:person.name,market:recipient.market,
     // Shared weekly rows retain numeric source fields, never another employee's name/ID.
     fields:Object.fromEntries(Object.entries(row.fields).filter(([key])=>!key.startsWith('person.'))),

@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { authAdmin, publicAuth, userDatabase } from './supabase.ts';
 import { readWorkbook, type ServerSheet } from './workbook.ts';
-import { privacyMappings, weeklyMappings, validateContext, sourcePeriod, type ImportContext } from './imports.ts';
+import { privacyMappings, weeklyMappings, validateContext, sourcePeriod, sourceTargetPeriod, sourceCampaignMonth, type ImportContext } from './imports.ts';
 import { type ImportPerson, type ImportAssignment } from './identity.ts';
 import type { PersonChoices } from './recipients.ts';
 import { prepareImport, exclusionFingerprint } from './importPreparation.ts';
@@ -16,6 +16,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseRoster, rosterForMonth, type RosterEntry } from './roster.ts';
 import {readStaffingPlan,staffingOverview,type StaffingEvidence} from './staffing.ts';
 import {withReportComments,type ReportComments} from './reportComments.ts';
+import {readTargetPeriod} from '../shared/targetPeriod.ts';
 import {importPeopleOptions} from './importPeople.ts';
 
 type Profile={user_id:string;email:string;display_name:string;role:AccountRole;department_ids:string[];person_id:string|null;primary_department:string|null;setting:string;active:boolean;must_change_password:boolean;is_test:boolean};
@@ -42,9 +43,9 @@ function admin(s:Session,department?:string){
  if(s.profile.must_change_password)throw new APIError(403,'Bitte zuerst dein Passwort ändern.','PASSWORD_CHANGE_REQUIRED');
  if(!isAdminRole(s.profile.role)||department&&s.profile.role!=='app_admin'&&!s.profile.department_ids.includes(department))throw new APIError(403,'Für diesen Bereich fehlen dir die Rechte.','FORBIDDEN');
 }
-async function allRows(db:SupabaseClient,table:string,filters:Record<string,string>={},order='created_at'){
+async function allRows(db:SupabaseClient,table:string,filters:Record<string,string>={},order='created_at',select='*'){
  const rows:Record<string,unknown>[]=[];
- for(let offset=0;offset<100000;offset+=1000){let q=db.from(table).select('*').order(order).order(table==='sec_accounts'?'user_id':table==='sec_read_receipts'?'report_id':table==='sec_retention_policies'?'category':'id').range(offset,offset+999);for(const[k,v]of Object.entries(filters))q=q.eq(k,v);const{data,error}=await q;failDB(error);rows.push(...data??[]);if((data?.length??0)<1000)return rows;}
+ for(let offset=0;offset<100000;offset+=1000){let q=db.from(table).select(select).order(order).order(table==='sec_accounts'?'user_id':table==='sec_read_receipts'?'report_id':table==='sec_retention_policies'?'category':'id').range(offset,offset+999);for(const[k,v]of Object.entries(filters))q=q.eq(k,v);const{data,error}=await q;failDB(error);rows.push(...(data??[]) as unknown as Record<string,unknown>[]);if((data?.length??0)<1000)return rows;}
  throw new APIError(413,'Bitte den Zeitraum oder Bereich weiter eingrenzen.');
 }
 async function reportComments(s:Session,assignment:string|null,reports:Record<string,unknown>[]){
@@ -76,6 +77,7 @@ async function storedStaffing(s:Session,ctx:ImportContext):Promise<StaffingEvide
 }
 function context(input:Record<string,unknown>):ImportContext{
  const ctx:ImportContext={group:String(input.group) as ImportContext['group'],setting:(input.group==='DA'?String(input.setting??'full'):'full') as ImportContext['setting'],month:String(input.month??''),phase:String(input.phase) as ImportContext['phase'],asOf:String(input.asOf??''),configurationVersion:'source-v1',metrics:[]};
+ if(input.targetPeriod!=null){const period=readTargetPeriod(input.targetPeriod,ctx.month);if(!period||ctx.phase==='MONTH_FINALIZATION')throw new APIError(400,'Zielzeitraum ungültig. Wähle bei Wochenständen zwei gültige Daten, die den Berichtsmonat berühren; bis darf nicht vor von liegen.');ctx.targetPeriod=period;}
  validateContext(ctx);if(!['TARGET_INITIALIZATION','WEEKLY_PROGRESS','MONTH_FINALIZATION'].includes(ctx.phase))throw new APIError(400,'Importphase wählen.');
  if(ctx.asOf>today())throw new APIError(400,'Zukünftige Datenstände können nicht veröffentlicht werden.');
  return ctx;
@@ -237,7 +239,10 @@ const server=createServer(async(req,res)=>{
    const department=url.searchParams.get('department')??undefined;if(department)admin(s,department);
    const filter:Record<string,string>=department?{department_id:department}:{};
    const[reports,weekly,imports,configurations,people,assignments]=await Promise.all([allRows(s.db,'sec_monthly_reports',filter,'published_at'),allRows(s.db,'sec_weekly_snapshots',filter,'published_at'),allRows(s.db,'sec_imports',filter,'created_at'),allRows(s.db,'sec_config_versions',filter,'created_at'),allRows(s.db,'sec_people',{},'created_at'),allRows(s.db,'sec_assignments',filter,'created_at')]);
-   send(res,200,{reports,weekly,imports,configurations,people,assignments});return;
+   const periodRows=await allRows(s.db,'sec_import_rows',{},'id','import_id,period:normalized->targetPeriod');
+   const periods=Map.groupBy(periodRows,r=>String(r.import_id));
+   const versions=imports.map(batch=>{const values=(periods.get(String(batch.id))??[]).map(r=>readTargetPeriod(r.period));const first=values[0];return first&&values.every(p=>p?.from===first.from&&p.through===first.through)?{...batch,targetPeriod:first}:batch;});
+   send(res,200,{reports,weekly,imports:versions,configurations,people,assignments});return;
   }
   if(route==='/admin/configurations'&&method==='POST'){
    const b=await json(req);admin(s,String(b.department));const definition=b.definition as {metrics?:AdminMetric[]}|undefined;
@@ -259,8 +264,8 @@ const server=createServer(async(req,res)=>{
    setTimeout(()=>previews.delete(id),20*60000).unref();
    const period=sourcePeriod(pivot??sheets[0]);
    const monthColumn=pivot?.columns.find(c=>/^monat$/i.test(c.label.trim()))?.key??'M';
-   const sourceMonths=pivot?[...new Set(pivot.data?.map(r=>excelMonth(r.cells[monthColumn]?.value??null,pivot.date1904)).filter(Boolean))].sort():period?[period.month]:[];
-   send(res,200,{previewId:id,filename,detectedGroup:detected??null,sourceMonths,sourceAsOf:period?.asOf??null,sheets:sheets.map(({allRows,data,...v})=>v),preferredSheet:pivot?.name??sheets[0]?.name});return;
+   const sourceMonths=pivot?[...new Set(pivot.data?.map(r=>excelMonth(r.cells[monthColumn]?.value??null,pivot.date1904)).filter(Boolean))].sort():sourceCampaignMonth(sheets[0])?[sourceCampaignMonth(sheets[0])]:period?[period.month]:[];
+   send(res,200,{previewId:id,filename,detectedGroup:detected??null,sourceMonths,sourceAsOf:period?.asOf??null,sourceTargetPeriod:pivot?null:sourceTargetPeriod(sheets[0]),sheets:sheets.map(({allRows,data,...v})=>v),preferredSheet:pivot?.name??sheets[0]?.name});return;
   }
   const importMatch=route.match(/^\/imports\/([0-9a-f-]{36})\/(validate|stage)$/);
   if(importMatch&&method==='POST'){

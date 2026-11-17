@@ -4,13 +4,23 @@ import { groupMetricBlocks, type DASetting, type MetricDefinition, type SECGroup
 import { closingDefinitions, closingMappingError, prepareClosing, type ClosingRecord, type ImportedCell } from '../shared/closingImport.ts';
 import type { AdminMetric, ExcelCell, ImportPhase, SourceColumnMapping } from '../shared/admin.ts';
 import type { ServerSheet } from './workbook.ts';
+import {readTargetPeriod,targetPeriodFromTitle,type TargetPeriod} from '../shared/targetPeriod.ts';
 
 export type Group = SECGroup['id'];
 export type NormalizedRow = { row:number;externalId:string;name:string;market:string;sourceShopId:string|null;fields:Record<string,ImportedCell>;normalized:Record<string,unknown> };
-export type ImportContext = { group:Group;setting:DASetting;month:string;phase:ImportPhase;asOf:string;configurationVersion:string;metrics?:AdminMetric[] };
+export type ImportContext = { group:Group;setting:DASetting;month:string;phase:ImportPhase;asOf:string;configurationVersion:string;metrics?:AdminMetric[];targetPeriod?:TargetPeriod };
 export type ImportIssue = {row:number;column:string;message:string};
 const deniedFields=new Set(['premium.salary','assignment.comment','attendance.reason','attendance.code']);
 export const privacyMappings=(mappings:SourceColumnMapping[])=>mappings.map(m=>deniedFields.has(m.field)?{...m,dataset:'ignore' as const}:m);
+export function sourceCampaignMonth(sheet:ServerSheet){
+ const months=sheet.allRows.filter(r=>r.row<(sheet.headerRow??1)).flatMap(r=>Object.values(r.cells).flatMap(c=>{const m=String(c.value??'').match(/\bMonthly\s+(\d{4})(0[1-9]|1[0-2])\b/i);return m?[m[1]+'-'+m[2]]:[];}));
+ return months.length&&months.every(m=>m===months[0])?months[0]:null;
+}
+export function sourceTargetPeriod(sheet:ServerSheet){
+ const titles=sheet.allRows.filter(r=>r.row<(sheet.headerRow??1)).flatMap(r=>Object.values(r.cells).map(c=>String(c.value??'')));
+ const periods=titles.map(targetPeriodFromTitle).filter((p):p is TargetPeriod=>p!==null);
+ return periods.length&&periods.every(p=>p.from===periods[0].from&&p.through===periods[0].through)?periods[0]:null;
+}
 export function sourcePeriod(sheet:ServerSheet){
   const rows=sheet.allRows.filter(r=>r.row<(sheet.headerRow??1));
   const edi=rows.find(r=>Object.values(r.cells).some(c=>/EDI\s*Data\s*period/i.test(String(c.value??''))));
@@ -113,7 +123,8 @@ export function validateWeekly(sheet:ServerSheet,mappings:SourceColumnMapping[],
   if(ctx.phase==='MONTH_FINALIZATION')issues.push({row:0,column:'',message:'Wochenliste darf keinen Monatsabschluss oder Prämien erzeugen.'});
   if(issues.length)return{records,issues,skipped,specialValues,otherMonths:0};
   const period=sourcePeriod(sheet);
-  if(period&&(!period.from.startsWith(ctx.month)||period.month!==ctx.month))issues.push({row:0,column:'',message:'Der gewählte Monat passt nicht zum EDI-Zeitraum der Datei.'});
+  const campaignMonth=sourceCampaignMonth(sheet);
+  if(campaignMonth?campaignMonth!==ctx.month:period&&(!period.from.startsWith(ctx.month)||period.month!==ctx.month))issues.push({row:0,column:'',message:'Der gewählte Monat passt nicht zum Kampagnenmonat bzw. EDI-Zeitraum der Datei.'});
   if(period&&period.asOf!==ctx.asOf)issues.push({row:0,column:'',message:'Der Datenstand muss dem Ende des EDI-Zeitraums entsprechen.'});
   for(const r of sheet.data??[]){
     const fields:Record<string,ImportedCell>={};
@@ -137,11 +148,12 @@ export function validateWeekly(sheet:ServerSheet,mappings:SourceColumnMapping[],
       const comments=cellComments(tc,ac);
       return{...m,target,actual:ctx.phase==='TARGET_INITIALIZATION'?null:sourceActual,...(comments.length?{comments}:{})};
     });
-    records.push(baseRow({row:r.row,month:ctx.month,fields},{groupId:ctx.group,month:ctx.month,setting:ctx.setting,metrics,phase:ctx.phase,configurationVersion:ctx.configurationVersion,sellout:percent(fields['sellout.overall'])}));
+    records.push(baseRow({row:r.row,month:ctx.month,fields},{groupId:ctx.group,month:ctx.month,setting:ctx.setting,metrics,phase:ctx.phase,configurationVersion:ctx.configurationVersion,...(ctx.targetPeriod?{targetPeriod:ctx.targetPeriod}:{}),sellout:percent(fields['sellout.overall'])}));
   }
   return{records,issues,skipped,specialValues,otherMonths:0};
 }
 export function validateContext(ctx:ImportContext){
+  if(ctx.targetPeriod!==undefined&&(ctx.phase==='MONTH_FINALIZATION'||!readTargetPeriod(ctx.targetPeriod,ctx.month)))throw new Error('Zielzeitraum ungültig. Wähle bei Wochenständen zwei gültige Daten, die den Berichtsmonat berühren; bis darf nicht vor von liegen.');
   if(!['HE','DA','IM','LH','ST'].includes(ctx.group)||!['full','laundry-ref','vc'].includes(ctx.setting))throw new Error('Ungültige Zuordnung.');
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(ctx.month)||!/^\d{4}-\d{2}-\d{2}$/.test(ctx.asOf)||!ctx.asOf.startsWith(ctx.month))throw new Error('Ungültiger Berichtsmonat oder Datenstand.');
   const date=new Date(ctx.asOf+'T12:00:00Z');if(!Number.isFinite(date.valueOf())||date.toISOString().slice(0,10)!==ctx.asOf)throw new Error('Ungültiger Datenstichtag.');
