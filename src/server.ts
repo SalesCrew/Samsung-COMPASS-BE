@@ -182,7 +182,8 @@ const server=createServer(async(req,res)=>{
    const filters=s.profile.person_id?{person_id:s.profile.person_id}:null;
    const[reports,weekly,assignments]=filters?await Promise.all([allRows(s.db,'sec_monthly_reports',filters,'published_at'),allRows(s.db,'sec_weekly_snapshots',filters,'published_at'),allRows(s.db,'sec_assignments',filters,'created_at')]):[[],[],[]];
    const requests=await allRows(s.db,'sec_privacy_requests',{user_id:s.profile.user_id},'created_at');
-   send(res,200,{exportedAt:new Date().toISOString(),profile:s.profile,assignments,reports:await reportComments(s,null,reports),weekly,requests});return;
+   const evidence=await s.db.rpc('sec_own_point_evidence');failDB(evidence.error);
+   send(res,200,{exportedAt:new Date().toISOString(),profile:s.profile,assignments,reports:await reportComments(s,null,reports),weekly,requests,historicalPointEvidence:evidence.data});return;
   }
   admin(s);
   if(route==='/admin/import-staffing'&&method==='GET'){
