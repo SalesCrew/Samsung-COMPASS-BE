@@ -1,8 +1,9 @@
 import type { NormalizedRow } from './imports.ts';
+import { matchRosterMarket, rosterForMonth, type RosterEntry } from './roster.ts';
 
 export type ImportPerson={id:string;external_id:string;name:string};
 export type ImportAssignment={person_id:string;department_id:string;setting:string;market:string};
-export type IdentityMatch={row:number;sourceName:string;sourceExternalId:string;sourceMarket:string;personId:string|null;status:'matched'|'unresolved'|'new'|'skipped';method:'id'|'name'|'fuzzy'|'market'|'manual'|'new'|'vacant'|'manual-skip'|null;score:number|null;message:string};
+export type IdentityMatch={row:number;sourceName:string;sourceExternalId:string;sourceMarket:string;personId:string|null;status:'matched'|'unresolved'|'new'|'skipped';method:'id'|'name'|'fuzzy'|'market'|'roster'|'manual'|'new'|'vacant'|'manual-skip'|null;score:number|null;message:string};
 
 /** Token sorting makes case, accents, separators and surname order irrelevant. */
 export function nameKey(value:string){return value.normalize('NFKD').replace(/\p{M}/gu,'').toLocaleLowerCase('de-AT').replace(/ß/g,'ss').split(/[^\p{L}\p{N}]+/u).filter(Boolean).sort().join(' ');}
@@ -12,12 +13,13 @@ function similarity(a:string,b:string){
  for(let i=1;i<=a.length;i++){const next=[i];for(let j=1;j<=b.length;j++)next[j]=Math.min(next[j-1]+1,previous[j]+1,previous[j-1]+(a[i-1]===b[j-1]?0:1));previous=next;}
  return 1-previous[b.length]/Math.max(a.length,b.length);
 }
-export function resolveImportPeople(rows:NormalizedRow[],people:ImportPerson[],assignments:ImportAssignment[],group:string,setting:string,choices:Record<string,string>={}){
+export function resolveImportPeople(rows:NormalizedRow[],people:ImportPerson[],assignments:ImportAssignment[],group:string,setting:string,choices:Record<string,string>={},reference:RosterEntry[]=[],month='9999-12',multipleRows:ReadonlySet<number>=new Set()){
  const byId=new Map(people.map(p=>[p.id,p])),byExternal=new Map(people.map(p=>[p.external_id,p]));
  const groupAssignments=assignments.filter(a=>a.department_id===group&&a.setting===setting);
  const assigned=new Set(groupAssignments.map(a=>a.person_id));
  const nameCandidates=people.filter(p=>assigned.has(p.id)||!assignments.some(a=>a.person_id===p.id));
  const names=nameCandidates.map(person=>({person,key:nameKey(person.name)}));
+ const roster=rosterForMonth(reference,group,month);
  const issues:{row:number;column:string;message:string}[]=[],matches:IdentityMatch[]=[],records:NormalizedRow[]=[];
  const seen=new Set<string>();
  for(const row of rows){
@@ -48,6 +50,19 @@ export function resolveImportPeople(rows:NormalizedRow[],people:ImportPerson[],a
    if(ids.size===1){person=byId.get([...ids][0]);match.method='market';match.score=1;}
    else if(ids.size>1)match.message='Der Markt hat mehrere Personen. Bitte die richtige Person auswählen.';
   }
+  if(!selected&&(!person||match.method==='market')&&!match.message&&row.market&&roster.length){
+   const result=matchRosterMarket(row.market,roster);
+   const ids=new Set(result.entries.map(r=>r.person_id));
+   if(result.ambiguous){person=undefined;match.message='Mehrere ähnliche Marktadressen gefunden. Bitte den Standort und die Person prüfen.';}
+   else if(ids.size===1&&!ids.has(null)){
+    const candidate=byId.get([...ids][0]!);
+    if(candidate&&assigned.has(candidate.id)){person=candidate;match.method='roster';match.score=result.score;}
+    else{person=undefined;match.message='Der Markt wurde in der Referenzliste gefunden. Die Konten-/Bereichszuordnung muss noch bestätigt werden.';}
+   }else if(ids.size>1){person=undefined;match.message='Dieser Markt ist mit mehreren Personen besetzt. Bitte die Zuordnung prüfen; es wird niemand automatisch ausgewählt.';}
+   else if(result.entries.length){person=undefined;match.message='Die Person aus der Referenzliste ist noch nicht eindeutig mit einem aktiven SEC-Konto verknüpft.';}
+  }
+  // An exact name can still represent only the first of two staff. Do not silently import one.
+  if(multipleRows.has(row.row)){person=undefined;match.status='unresolved';match.message='HOURS enthält zwei Besetzungen (z. B. 35+35). Für diesen Markt beide Personendatensätze getrennt bereitstellen oder die Zeile vorerst überspringen. Eine einzelne Person reicht nicht.';}
   let market=row.market;
   if(person&&!market){const markets=[...new Set(groupAssignments.filter(a=>a.person_id===person!.id).map(a=>a.market))];if(markets.length===1)market=markets[0];else{person=undefined;match.message='Der Markt ist nicht eindeutig. Bitte die Marktspalte zuordnen.';}}
   if(person&&market){match.personId=person.id;match.status='matched';}

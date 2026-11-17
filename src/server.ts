@@ -12,6 +12,7 @@ import { supervisorGroup, type GroupSource } from './supervisorGroup.ts';
 import { closingMappings, detectClosingGroup, excelMonth } from '../shared/closingImport.ts';
 import type { SourceColumnMapping, AdminMetric } from '../shared/admin.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { parseRoster, rosterForMonth, type RosterEntry } from './roster.ts';
 
 type Profile={user_id:string;email:string;display_name:string;role:AccountRole;department_ids:string[];person_id:string|null;primary_department:string|null;setting:string;active:boolean;must_change_password:boolean;is_test:boolean};
 type Session={token:string;profile:Profile;db:SupabaseClient};
@@ -151,6 +152,22 @@ const server=createServer(async(req,res)=>{
    send(res,200,{exportedAt:new Date().toISOString(),profile:s.profile,assignments,reports,weekly,requests});return;
   }
   admin(s);
+  if(route==='/admin/roster'&&method==='GET'){
+   const stored=await allRows(s.db,'sec_roster_entries',{},'imported_at');
+   const rows=['HE','DA','IM','LH','ST'].flatMap(group=>rosterForMonth(stored as RosterEntry[],group,today().slice(0,7)));
+   send(res,200,{count:rows.length,linked:rows.filter(r=>r.person_id!==null).length,sourceMonth:rows.map(r=>String(r.source_month)).sort().at(-1)??null});return;
+  }
+  if(route==='/admin/roster'&&method==='POST'){
+   if(s.profile.role!=='app_admin')throw new APIError(403,'Nur die App-Administration darf die Referenzliste aktualisieren.','FORBIDDEN');
+   const month=url.searchParams.get('month')??'';
+   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||month>today().slice(0,7))throw new APIError(400,'Bitte den gültigen Stand der Personenliste als Monat angeben.');
+   const filename=decodeURIComponent(String(req.headers['x-file-name']??''));
+   const bytes=await body(req,30*1024*1024);const roster=parseRoster(readWorkbook(bytes,filename));
+   if(roster.issues.length){send(res,422,{error:'Bitte die Excel-Liste korrigieren: '+roster.issues.slice(0,5).map(i=>'Zeile '+i.row+', '+i.field+': '+i.message).join(' '),issues:roster.issues,headers:roster.headers,count:roster.records.length});return;}
+   if(!roster.records.length)throw new APIError(400,'Die Referenzliste enthält keine Personenzeilen.');
+   const{data,error}=await s.db.rpc('sec_import_roster',{p_rows:roster.records,p_source_hash:createHash('sha256').update(bytes).digest('hex'),p_source_month:month});failDB(error);
+   send(res,200,{...data,headers:roster.headers});return;
+  }
   if(route==='/admin/accounts'&&method==='GET'){send(res,200,{accounts:await allRows(s.db,'sec_accounts',{},'created_at')});return;}
   const resetMatch=route.match(/^\/admin\/accounts\/([0-9a-f-]{36})\/reset-password$/);
   if(resetMatch&&method==='POST'){
@@ -219,13 +236,14 @@ const server=createServer(async(req,res)=>{
    const pivot=sheet.name.replace(/[\s_-]/g,'').toLowerCase()==='pivotliste';
    const mappings=Array.isArray(b.mappings)?b.mappings as SourceColumnMapping[]:pivot?privacyMappings(closingMappings(sheet,ctx.group,ctx.metrics)):weeklyMappings(sheet,ctx);
    if(b.personMatches!==undefined&&(typeof b.personMatches!=='object'||b.personMatches===null||Array.isArray(b.personMatches)||Object.entries(b.personMatches).some(([k,v])=>!/^\d+$/.test(k)||typeof v!=='string')))throw new APIError(400,'Personenzuordnung prüfen.');
-   const[people,assignments]=await Promise.all([allRows(s.db,'sec_people'),allRows(s.db,'sec_assignments')]);
-   const result=prepareImport(sheet,mappings,ctx,people as ImportPerson[],assignments as ImportAssignment[],(b.personMatches??{}) as Record<string,string>);
+   const[people,assignments,roster]=await Promise.all([allRows(s.db,'sec_people'),allRows(s.db,'sec_assignments'),allRows(s.db,'sec_roster_entries',{department_id:ctx.group},'imported_at')]);
+   const result=prepareImport(sheet,mappings,ctx,people as ImportPerson[],assignments as ImportAssignment[],(b.personMatches??{}) as Record<string,string>,roster as RosterEntry[]);
    if(importMatch[2]==='validate'){send(res,200,{issues:result.issues,count:result.records.length,otherMonths:result.otherMonths,skipped:result.skipped,skippedUnstaffed:result.skippedUnstaffed,skippedManual:result.skippedManual,specialValues:result.specialValues,mappings,configurationVersion:ctx.configurationVersion,identityMatches:result.identityMatches,unresolvedCount:result.unresolvedCount,people:(people as ImportPerson[]).map(person=>({...person,markets:(assignments as ImportAssignment[]).filter(a=>a.person_id===person.id&&a.department_id===ctx.group&&a.setting===ctx.setting).map(a=>a.market)}))});return;}
    if(result.issues.length||!result.records.length)throw new APIError(400,'Import enthält Fehler oder offene Personenzuordnungen. Zuerst prüfen.','IMPORT_INVALID');
    const contract:unknown[]=[p.hash,ctx,privacyMappings(mappings),sheet.name];
    if(result.records.some(r=>{const original=result.sourceRecords.find(v=>v.row===r.row);return original?.externalId!==r.externalId||original?.market!==r.market;}))contract.push(result.records.map(r=>[r.row,r.externalId,r.market]));
    if(result.skippedRows.length)contract.push({excludedRows:exclusionFingerprint(result.skippedRows)});
+   if(result.identityMatches.some(m=>m.method==='roster'))contract.push({roster:roster.map(r=>[r.id,r.source_hash,r.person_id]).sort()});
    const fingerprint=createHash('sha256').update(JSON.stringify(contract)).digest('hex');
    const{data,error}=await s.db.rpc('sec_stage_import',{p_department:ctx.group,p_month:ctx.month+'-01',p_phase:ctx.phase,p_as_of:ctx.asOf,p_fingerprint:fingerprint,p_filename:p.filename,p_sheet:sheet.name,p_mapping:privacyMappings(mappings),p_config:config?.id??null,p_rows:result.records});failDB(error);send(res,201,{import:data});return;
   }
