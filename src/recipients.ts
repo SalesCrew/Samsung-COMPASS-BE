@@ -2,6 +2,7 @@ import { resolveImportPeople, nameKey, type ImportPerson, type ImportAssignment,
 import type { NormalizedRow, ImportContext } from './imports.ts';
 import { rosterForMonth, matchRosterMarket, marketSimilarity, marketKey, type RosterEntry } from './roster.ts';
 import {planMarketStaffing,staffingProgress,type StaffingEvidence,type StaffingProgress} from './staffing.ts';
+import {importPersonIds} from './importPeople.ts';
 
 export type PersonChoices=Record<string,string|string[]>;
 export type StaffingHint={count:number|null;lighthouse:boolean};
@@ -31,7 +32,7 @@ export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],ass
     matches.push({row:row.row,sourceName:row.name,sourceExternalId:row.externalId,sourceMarket:row.market,personId:null,status:'unresolved',method:null,score:null,message:issues.at(-1)!.message});continue;
    }
    const one=resolveImportPeople([row],people,assignments,ctx.group,ctx.setting,choice?{[row.row]:choice}:{},reference,ctx.month);
-   records.push(...one.records);matches.push(...one.matches);issues.push(...one.issues);continue;
+   records.push(...one.records);matches.push(...one.matches.map(m=>({...m,targetGroups:[ctx.group]})));issues.push(...one.issues);continue;
   }
   const expected=plan?.expected[ctx.group as 'HE'|'IM']??hint?.count??(ids.length|| (Array.isArray(choice)?choice.length:1));
   const match:RecipientMatch={row:row.row,sourceName:row.name,sourceExternalId:row.externalId,sourceMarket:row.market,personId:null,status:'unresolved',method:null,score:lookup.score,message:'',shared:true,expectedCount:expected,targetGroup:groups.join(' / '),targetGroups:groups};
@@ -48,6 +49,9 @@ export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],ass
    const personRef=refs.find(r=>r.person_id===id);
    const referenceMarket=personRef?.market;
    const personGroup=personRef?.department_id??group;
+   if(!importPersonIds(assignments,reference,personGroup,personGroup==='DA'?ctx.setting:'full',ctx.month).has(id)){
+    match.message='Eine gewählte Person gehört nicht zur gültigen Besetzung dieses Bereichs. Prüfe Berichtsmonat und Personenliste und wähle die passenden Personen.';break;
+   }
    const eligible=assignments.filter(a=>a.person_id===id&&a.department_id===personGroup&&a.setting===(personGroup==='DA'?ctx.setting:'full')&&marketSimilarity(a.market,referenceMarket??row.market)>=.84);
    const best=Math.max(...eligible.map(a=>marketSimilarity(a.market,referenceMarket??row.market)));
    const top=eligible.filter(a=>marketSimilarity(a.market,referenceMarket??row.market)===best);

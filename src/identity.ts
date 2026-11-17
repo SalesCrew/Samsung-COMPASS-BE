@@ -1,9 +1,10 @@
 import type { NormalizedRow } from './imports.ts';
 import { matchRosterMarket, rosterForMonth, type RosterEntry } from './roster.ts';
+import {importPersonIds} from './importPeople.ts';
 
 export type ImportPerson={id:string;external_id:string;name:string};
 export type ImportAssignment={person_id:string;department_id:string;setting:string;market:string};
-export type IdentityMatch={row:number;sourceName:string;sourceExternalId:string;sourceMarket:string;personId:string|null;status:'matched'|'unresolved'|'new'|'skipped';method:'id'|'name'|'fuzzy'|'market'|'roster'|'manual'|'new'|'vacant'|'manual-skip'|null;score:number|null;message:string};
+export type IdentityMatch={row:number;sourceName:string;sourceExternalId:string;sourceMarket:string;personId:string|null;status:'matched'|'unresolved'|'new'|'skipped';method:'id'|'name'|'fuzzy'|'market'|'roster'|'manual'|'new'|'vacant'|'manual-skip'|null;score:number|null;message:string;canCreate?:boolean};
 
 /** Token sorting makes case, accents, separators and surname order irrelevant. */
 export function nameKey(value:string){return value.normalize('NFKD').replace(/\p{M}/gu,'').toLocaleLowerCase('de-AT').replace(/ß/g,'ss').split(/[^\p{L}\p{N}]+/u).filter(Boolean).sort().join(' ');}
@@ -15,9 +16,10 @@ function similarity(a:string,b:string){
 }
 export function resolveImportPeople(rows:NormalizedRow[],people:ImportPerson[],assignments:ImportAssignment[],group:string,setting:string,choices:Record<string,string>={},reference:RosterEntry[]=[],month='9999-12',multipleRows:ReadonlySet<number>=new Set()){
  const byId=new Map(people.map(p=>[p.id,p])),byExternal=new Map(people.map(p=>[p.external_id,p]));
- const groupAssignments=assignments.filter(a=>a.department_id===group&&a.setting===setting);
+ const eligible=importPersonIds(assignments,reference,group,setting,month);
+ const groupAssignments=assignments.filter(a=>a.department_id===group&&a.setting===setting&&eligible.has(a.person_id));
  const assigned=new Set(groupAssignments.map(a=>a.person_id));
- const nameCandidates=people.filter(p=>assigned.has(p.id)||!assignments.some(a=>a.person_id===p.id));
+ const nameCandidates=people.filter(p=>assigned.has(p.id));
  const names=nameCandidates.map(person=>({person,key:nameKey(person.name)}));
  const roster=rosterForMonth(reference,group,month);
  const issues:{row:number;column:string;message:string}[]=[],matches:IdentityMatch[]=[],records:NormalizedRow[]=[];
@@ -25,9 +27,11 @@ export function resolveImportPeople(rows:NormalizedRow[],people:ImportPerson[],a
  for(const row of rows){
   const match:IdentityMatch={row:row.row,sourceName:row.name,sourceExternalId:row.externalId,sourceMarket:row.market,personId:null,status:'unresolved',method:null,score:null,message:''};
   const selected=choices[String(row.row)];const exactId=byExternal.get(row.externalId);let person:ImportPerson|undefined;
+  match.canCreate=!exactId&&!roster.length&&Boolean(row.externalId&&row.name&&row.market);
   if(selected==='new'){
-   if(exactId&&nameKey(exactId.name)===nameKey(row.name)){person=exactId;match.method='id';match.score=1;}
+   if(exactId&&eligible.has(exactId.id)&&nameKey(exactId.name)===nameKey(row.name)){person=exactId;match.method='id';match.score=1;}
    else if(exactId){match.message='Diese SEC-ID gehört bereits zu einer vorhandenen Person.';}
+   else if(roster.length){match.message='Die Person ist in der für diesen Berichtsmonat gültigen Personenliste nicht enthalten. Prüfe Monat und Bereich oder aktualisiere zuerst die Personenliste.';}
    else if(!row.externalId||!row.name||!row.market){match.message='Für eine neue Person werden SEC-ID, Name und Markt aus der Datei benötigt.';}
    else{match.status='new';match.method='new';}
   }else if(selected){person=byId.get(selected);match.method='manual';if(!person)match.message='Die gewählte Person ist nicht mehr verfügbar.';else if(exactId&&exactId.id!==person.id){person=undefined;match.message='SEC-ID und gewählte Person widersprechen sich. Bitte die Datei prüfen.';}}
@@ -49,6 +53,10 @@ export function resolveImportPeople(rows:NormalizedRow[],people:ImportPerson[],a
    const ids=new Set(groupAssignments.filter(a=>nameKey(a.market)===nameKey(row.market)).map(a=>a.person_id));
    if(ids.size===1){person=byId.get([...ids][0]);match.method='market';match.score=1;}
    else if(ids.size>1)match.message='Der Markt hat mehrere Personen. Bitte die richtige Person auswählen.';
+  }
+  if(person&&!eligible.has(person.id)){
+   person=undefined;
+   match.message='Die Person gehört nicht zur gültigen Besetzung dieses Bereichs und DA-Settings. Prüfe Berichtsmonat, Bereich und Personenliste und wähle dann eine passende Person.';
   }
   if(!selected&&(!person||match.method==='market')&&!match.message&&row.market&&roster.length){
    const result=matchRosterMarket(row.market,roster);
