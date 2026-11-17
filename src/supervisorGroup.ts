@@ -4,7 +4,7 @@ import {ownPremiumHistory} from './premiumHistory.ts';
 import type {GroupAverageMetric,GroupMean,SupervisorGroupData} from '../shared/supervisorGroup.ts';
 
 type Metric={key:string;label:string;unit:string;block?:string;weight:number|null;resultState?:string;achievement?:number|null;actual:number|null;target:number|null;details?:Metric[]};
-type Row={id:string;person_id:string;assignment_id:string;department_id:string;month:string;revision:number;published_at:string;as_of?:string;payload:{setting:string;sellout?:number|null;softbonus?:number|null;points?:number|null;premium?:number|null;extras?:{type:string;amount:number}[];extrasAvailable?:boolean;metrics?:Metric[];qualitative?:Metric[]}};
+type Row={id:string;person_id:string;assignment_id:string;department_id:string;month:string;revision:number;published_at:string;as_of?:string;payload:{sourceGroup?:string;setting:string;sellout?:number|null;softbonus?:number|null;points?:number|null;premium?:number|null;extras?:{type:string;amount:number}[];extrasAvailable?:boolean;metrics?:Metric[];qualitative?:Metric[]}};
 export type GroupSource={members:{person_id:string;setting:string}[];reports:Row[];weekly:Row[];premiumRows:Row[];pointHistory:{person_id:string;history:{month:string;points:number|null;sourceLevel?:string|null}[]}[]};
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 const agreed=(values:unknown[])=>values.length&&values.every(finite)&&values.every(v=>v===values[0])?values[0] as number:null;
@@ -13,7 +13,7 @@ const priorMonth=(month:string)=>{const d=new Date(month+'-01T12:00:00Z');d.setU
 const metricId=(m:Metric,setting:string)=>JSON.stringify([setting,m.key,m.unit,m.label,m.block??'']);
 function latest(rows:Row[],weekly=false){
  const active=new Map<string,Row>();
- for(const row of rows){const key=row.assignment_id+'|'+row.month+(weekly?'|'+row.as_of:'');const old=active.get(key);if(!old||row.revision>old.revision)active.set(key,row);}
+ for(const row of rows){const key=row.assignment_id+'|'+row.month+(weekly?'|'+row.as_of+'|'+(row.payload.sourceGroup??'full'):'');const old=active.get(key);if(!old||row.revision>old.revision)active.set(key,row);}
  return [...active.values()];
 }
 function metricGroups(rows:Row[],members:GroupSource['members'],kind:'metrics'|'qualitative',weekly=false){
@@ -82,8 +82,9 @@ export function supervisorGroup(source:GroupSource,groupId:SupervisorGroupData['
  // Weekly improvement uses only paired, comparable people on adjacent dated stands.
  for(let i=1;i<stands.length;i++)for(const metric of stands[i].metrics){
   const changes=members.filter(p=>p.setting===metric.setting).map(p=>{
-   const own=(asOf:string)=>agreed(weekly.filter(r=>r.as_of===asOf&&r.person_id===p.person_id).map(r=>(()=>{const m=r.payload.metrics?.find(m=>metricId(m,r.payload.setting??'full')===metric.id);return m&&finite(m.actual)&&!['missing','invalid','not-applicable'].includes(m.resultState??'')?m.actual:null;})()));
-   const current=own(stands[i].asOf),previous=own(stands[i-1].asOf);return current!==null&&previous!==null?current-previous:null;
+   const own=(asOf:string)=>agreed(weekly.filter(r=>r.as_of===asOf&&r.person_id===p.person_id&&(groupId!=='LH'||r.payload.metrics?.some(m=>metricId(m,r.payload.setting??'full')===metric.id))).map(r=>(()=>{const m=r.payload.metrics?.find(m=>metricId(m,r.payload.setting??'full')===metric.id);return m&&finite(m.actual)&&!['missing','invalid','not-applicable'].includes(m.resultState??'')?m.actual:null;})()));
+   const previousStand=groupId==='LH'?stands.slice(0,i).findLast(s=>s.metrics.some(m=>m.id===metric.id)):stands[i-1];
+   const current=own(stands[i].asOf),previous=previousStand?own(previousStand.asOf):null;return current!==null&&previous!==null?current-previous:null;
   });metric.change=mean(changes,changes.length);
  }
  return{groupId,calendarDay,members:members.length,months,weekly:{month:calendarDay.slice(0,7),stands}};

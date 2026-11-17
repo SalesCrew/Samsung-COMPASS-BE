@@ -4,6 +4,7 @@ import { authAdmin, publicAuth, userDatabase } from './supabase.ts';
 import { readWorkbook, type ServerSheet } from './workbook.ts';
 import { privacyMappings, weeklyMappings, validateContext, sourcePeriod, type ImportContext } from './imports.ts';
 import { type ImportPerson, type ImportAssignment } from './identity.ts';
+import type { PersonChoices } from './recipients.ts';
 import { prepareImport, exclusionFingerprint } from './importPreparation.ts';
 import {ownPremiumHistory} from './premiumHistory.ts';
 import { secPresentation, type PresentationSettings } from './presentation.ts';
@@ -235,14 +236,15 @@ const server=createServer(async(req,res)=>{
    const detected=detectClosingGroup(p.filename,sheet);if(detected&&detected!==ctx.group)throw new APIError(400,'Obergruppe passt nicht zur Datei.');
    const pivot=sheet.name.replace(/[\s_-]/g,'').toLowerCase()==='pivotliste';
    const mappings=Array.isArray(b.mappings)?b.mappings as SourceColumnMapping[]:pivot?privacyMappings(closingMappings(sheet,ctx.group,ctx.metrics)):weeklyMappings(sheet,ctx);
-   if(b.personMatches!==undefined&&(typeof b.personMatches!=='object'||b.personMatches===null||Array.isArray(b.personMatches)||Object.entries(b.personMatches).some(([k,v])=>!/^\d+$/.test(k)||typeof v!=='string')))throw new APIError(400,'Personenzuordnung prüfen.');
-   const[people,assignments,roster]=await Promise.all([allRows(s.db,'sec_people'),allRows(s.db,'sec_assignments'),allRows(s.db,'sec_roster_entries',{department_id:ctx.group},'imported_at')]);
-   const result=prepareImport(sheet,mappings,ctx,people as ImportPerson[],assignments as ImportAssignment[],(b.personMatches??{}) as Record<string,string>,roster as RosterEntry[]);
-   if(importMatch[2]==='validate'){send(res,200,{issues:result.issues,count:result.records.length,otherMonths:result.otherMonths,skipped:result.skipped,skippedUnstaffed:result.skippedUnstaffed,skippedManual:result.skippedManual,specialValues:result.specialValues,mappings,configurationVersion:ctx.configurationVersion,identityMatches:result.identityMatches,unresolvedCount:result.unresolvedCount,people:(people as ImportPerson[]).map(person=>({...person,markets:(assignments as ImportAssignment[]).filter(a=>a.person_id===person.id&&a.department_id===ctx.group&&a.setting===ctx.setting).map(a=>a.market)}))});return;}
+   if(b.personMatches!==undefined&&(typeof b.personMatches!=='object'||b.personMatches===null||Array.isArray(b.personMatches)||Object.entries(b.personMatches).some(([k,v])=>!/^\d+$/.test(k)||!(typeof v==='string'||Array.isArray(v)&&v.length>0&&v.length<=10&&v.every(id=>typeof id==='string'&&(id===''||/^[0-9a-f-]{36}$/.test(id)))))))throw new APIError(400,'Personenzuordnung prüfen.');
+   const[people,assignments,roster]=await Promise.all([allRows(s.db,'sec_people'),allRows(s.db,'sec_assignments'),allRows(s.db,'sec_roster_entries',{},'imported_at')]);
+   const result=prepareImport(sheet,mappings,ctx,people as ImportPerson[],assignments as ImportAssignment[],(b.personMatches??{}) as PersonChoices,roster as RosterEntry[]);
+   if(importMatch[2]==='validate'){send(res,200,{issues:result.issues,count:result.records.length,otherMonths:result.otherMonths,skipped:result.skipped,skippedUnstaffed:result.skippedUnstaffed,skippedManual:result.skippedManual,specialValues:result.specialValues,mappings,configurationVersion:ctx.configurationVersion,identityMatches:result.identityMatches,unresolvedCount:result.unresolvedCount,people:(people as ImportPerson[]).map(person=>({...person,department_ids:[...new Set((assignments as ImportAssignment[]).filter(a=>a.person_id===person.id).map(a=>a.department_id))],markets:(assignments as ImportAssignment[]).filter(a=>a.person_id===person.id&&a.department_id===ctx.group&&a.setting===ctx.setting).map(a=>a.market)}))});return;}
    if(result.issues.length||!result.records.length)throw new APIError(400,'Import enthält Fehler oder offene Personenzuordnungen. Zuerst prüfen.','IMPORT_INVALID');
    const contract:unknown[]=[p.hash,ctx,privacyMappings(mappings),sheet.name];
    if(result.records.some(r=>{const original=result.sourceRecords.find(v=>v.row===r.row);return original?.externalId!==r.externalId||original?.market!==r.market;}))contract.push(result.records.map(r=>[r.row,r.externalId,r.market]));
    if(result.skippedRows.length)contract.push({excludedRows:exclusionFingerprint(result.skippedRows)});
+   contract.push({recipients:result.records.map(r=>[r.row,r.externalId,r.market,r.normalized.groupId,r.normalized.sourceGroup??null]).sort()});
    if(result.identityMatches.some(m=>m.method==='roster'))contract.push({roster:roster.map(r=>[r.id,r.source_hash,r.person_id]).sort()});
    const fingerprint=createHash('sha256').update(JSON.stringify(contract)).digest('hex');
    const{data,error}=await s.db.rpc('sec_stage_import',{p_department:ctx.group,p_month:ctx.month+'-01',p_phase:ctx.phase,p_as_of:ctx.asOf,p_fingerprint:fingerprint,p_filename:p.filename,p_sheet:sheet.name,p_mapping:privacyMappings(mappings),p_config:config?.id??null,p_rows:result.records});failDB(error);send(res,201,{import:data});return;

@@ -52,6 +52,11 @@ export function marketSimilarity(left:string,right:string){
  const an=numbers(a),bn=numbers(b);
  if(an.length&&bn.length&&(an.length!==bn.length||[...an].sort().join('|')!==[...bn].sort().join('|')))return 0;
  const sorted=(s:string)=>s.split(' ').sort().join(' ');
+ if(sorted(a)===sorted(b))return 1;
+ const at=a.split(' '),bt=b.split(' ');
+ // A roster may abbreviate a market while the assignment includes district/address details.
+ // Distinct supplied branch/house numbers were rejected above; one-word locations stay exact-only.
+ if(Math.min(at.length,bt.length)>=2&&(at.every(t=>bt.includes(t))||bt.every(t=>at.includes(t))))return .92;
  return Math.max(editSimilarity(a,b),editSimilarity(sorted(a),sorted(b)));
 }
 
@@ -68,6 +73,7 @@ export function matchRosterMarket(market:string,entries:RosterEntry[]){
  const best=scored[0]?.score??0;
  if(best<.84||marketKey(market).length<(best===1?3:5))return{entries:[],score:best,ambiguous:false};
  const top=scored.filter(r=>r.score===best);
+ if(best<1&&new Set(top.map(r=>marketKey(r.entry.market).split(' ').sort().join(' '))).size>1)return{entries:[],score:best,ambiguous:true};
  const runner=scored.find(r=>r.score<best);
  if(best<1&&runner&&best-runner.score<.10)return{entries:[],score:best,ambiguous:true};
  // Multiple people at the same physical market are deliberately retained as a conflict.

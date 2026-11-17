@@ -17,6 +17,8 @@ test('case, chain abbreviation, reordered words and street abbreviations resolve
  assert.equal(matchRosterMarket('MM Musterstadt Hauptstrasse 1A',[reference]).entries.length,1);
  assert.equal(matchRosterMarket('MM Musterstdt Hauptstrasse 1A',[reference]).entries.length,1);
  assert.equal(matchRosterMarket('MM Wels',[{...reference,market:'Media Markt Wels'}]).entries.length,1);
+ assert.equal(marketSimilarity('MM Musterstadt Zentrum','MM Musterstadt Zentrum Nord'),.92);
+ assert.equal(matchRosterMarket('MM Musterstadt Zentrum',[{...reference,market:'MM Musterstadt Zentrum Nord'},{...reference,id:'r2',market:'MM Musterstadt Zentrum Sued'}]).ambiguous,true);
 });
 test('similar branches, multiple people and unlinked roster rows never become arbitrary matches',()=>{
  const two=[reference,{...reference,id:'r2',person_id:'b'}];

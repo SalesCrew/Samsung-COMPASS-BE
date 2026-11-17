@@ -169,7 +169,7 @@ export function prepareClosing(sheet: SheetPreview, group: Group, mappings: Sour
       else if (typeof converted.value === 'string' && /^[x]$|^n\/?a$|^n\.a\.$/i.test(converted.value.trim())) result.specialValues++;
       else if (cell.kind === 'value' && typeof converted.value !== 'number' && ['number', 'currency', 'percent'].includes(item.dataType) && converted.value !== '') result.issues.push({ row: row.row, column: item.column, message: `${item.sourceLabel}: Zahl nicht lesbar.` });
     }
-    const key = JSON.stringify([fields['assignment.sourceShopId']?.value ?? fields['person.externalId']?.value, fields['assignment.market']?.value, reportMonth]);
+    const key = JSON.stringify([fields['person.externalId']?.value || fields['person.name']?.value || fields['assignment.sourceShopId']?.value, fields['assignment.market']?.value, reportMonth]);
     if (keys.has(key)) result.issues.push({ row: row.row, column: personColumn, message: 'Doppelter SEC-/Markt-Datensatz für diesen Monat.' });
     keys.add(key);
     result.records.push({ row: row.row, month: reportMonth, fields });

@@ -64,3 +64,9 @@ test('negative weekly values remain known and contribute to signed means and wee
  const stands=supervisorGroup(source(['a','b'],[],{weekly}),'IM','2026-11-20').weekly.stands;
  assert.deepEqual(stands[0].metrics[0].actual,{value:-1,known:2,total:2});assert.equal(stands[0].metrics[0].achievement.value,-10);assert.deepEqual(stands[1].metrics[0].change,{value:-.5,known:2,total:2});
 });
+
+test('LH source corrections retain both same-date blocks and compare only the same component updates',()=>{
+ const weekly=[];for(const [id,day,component,revision,actual]of[['he-old','03','HE',1,2],['im','05','IM',1,7],['he-new','10','HE',1,9],['he-fix','10','HE',2,5],['im-same','10','IM',3,8]]){const r=row('a','2026-11');r.id=id;r.department_id='LH';r.as_of='2026-11-'+day;r.revision=revision;r.published_at=r.as_of+'T08:00:00Z';r.payload.sourceGroup=component;r.payload.metrics=[metric(null,{key:component==='HE'?'he-units':'im-flagship',block:component,actual,target:10})];weekly.push(r);}
+ const stands=supervisorGroup(source(['a'],[],{weekly}),'LH','2026-11-20').weekly.stands;
+ const last=stands.at(-1);assert.equal(last.metrics.length,2);assert.equal(last.metrics.find(m=>m.block==='HE').actual.value,5);assert.equal(last.metrics.find(m=>m.block==='HE').change.value,3);assert.equal(last.metrics.find(m=>m.block==='IM').change.value,1);
+});

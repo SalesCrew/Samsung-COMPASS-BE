@@ -1,5 +1,6 @@
 import { validateClosing, validateWeekly, type ImportContext } from './imports.ts';
-import { resolveImportPeople, type IdentityMatch, type ImportPerson, type ImportAssignment } from './identity.ts';
+import { type IdentityMatch, type ImportPerson, type ImportAssignment } from './identity.ts';
+import { resolveRecipients, type PersonChoices, type StaffingHint } from './recipients.ts';
 import { excelMonth } from '../shared/closingImport.ts';
 import type { ExcelCell, SourceColumnMapping } from '../shared/admin.ts';
 import type { ServerSheet } from './workbook.ts';
@@ -11,7 +12,7 @@ const isVacant = (value:string) => vacancy.has(value.trim().toLocaleLowerCase('d
 const sourceText = (cell:ExcelCell|undefined):string|null => !cell || cell.kind==='blank' ? '' : cell.kind==='value' ? String(cell.value??'').trim() : null;
 
 /** Only explicit vacancy/blank employee cells are automatic exclusions. Unknown people stay errors. */
-export function skippedImportRows(sheet:ServerSheet,mappings:SourceColumnMapping[],ctx:ImportContext,people:ImportPerson[],choices:Record<string,string>={},reference:RosterEntry[]=[]):SkippedImportRow[]{
+export function skippedImportRows(sheet:ServerSheet,mappings:SourceColumnMapping[],ctx:ImportContext,people:ImportPerson[],choices:PersonChoices={},reference:RosterEntry[]=[]):SkippedImportRow[]{
  const column=(field:string)=>mappings.find(m=>m.dataset!=='ignore'&&m.field===field&&sheet.columns.some(c=>c.key===m.column))?.column;
  const id=column('person.externalId'),name=column('person.name'),market=column('assignment.market'),month=column('snapshot.reportMonth');
  const knownIds=new Set(people.map(p=>p.external_id));
@@ -28,10 +29,11 @@ export function skippedImportRows(sheet:ServerSheet,mappings:SourceColumnMapping
   if(!selected&&sourceMarket&&!knownIds.has(sourceExternalId)){
    const emptyId=!sourceExternalId||sourceExternalId==='0'||isVacant(sourceExternalId);
    const emptyName=!sourceName||isVacant(sourceName);
-   const roster=matchRosterMarket(sourceMarket,rosterForMonth(reference,ctx.group,ctx.month));
+   const staffingSignal=sheet.columns.some(c=>/^(hours|stunden)$/i.test(c.label.trim())&&/\d\s*\+\s*\d/.test(String(row.cells[c.key]?.value??'')))||Object.values(row.cells).some(c=>typeof c.value==='string'&&/\blighthouse\b/i.test(c.value));
+   const roster=matchRosterMarket(sourceMarket,[...rosterForMonth(reference,ctx.group,ctx.month),...(['HE','IM'].includes(ctx.group)&&ctx.phase!=='MONTH_FINALIZATION'?rosterForMonth(reference,'LH',ctx.month):[])]);
    // A blank legacy SEC column is not a vacancy when the maintained roster proves staffing.
    // An explicit "No SEC" retains its existing meaning until consciously corrected.
-   if(isVacant(sourceName)||((id||name)&&emptyId&&emptyName&&!roster.entries.length&&!roster.ambiguous))method='vacant';
+   if(isVacant(sourceName)||((id||name)&&emptyId&&emptyName&&!staffingSignal&&!roster.entries.length&&!roster.ambiguous))method='vacant';
   }
   if(method)skipped.push({row:row.row,sourceName,sourceExternalId,sourceMarket,personId:null,status:'skipped',method,score:null,message:method==='vacant'?'Unbesetzter Markt laut Excel. Diese Zeile wird nicht importiert.':'Bewusst übersprungen. Diese Zeile wird nicht importiert.'});
  }
@@ -39,7 +41,7 @@ export function skippedImportRows(sheet:ServerSheet,mappings:SourceColumnMapping
 }
 
 /** The same path handles weekly uploads and historical closing files, before cell validation. */
-export function prepareImport(sheet:ServerSheet,mappings:SourceColumnMapping[],ctx:ImportContext,people:ImportPerson[],assignments:ImportAssignment[],choices:Record<string,string>={},reference:RosterEntry[]=[]){
+export function prepareImport(sheet:ServerSheet,mappings:SourceColumnMapping[],ctx:ImportContext,people:ImportPerson[],assignments:ImportAssignment[],choices:PersonChoices={},reference:RosterEntry[]=[]){
  const skippedRows=skippedImportRows(sheet,mappings,ctx,people,choices,reference);
  const excluded=new Set(skippedRows.map(r=>r.row));
  const filtered={...sheet,data:sheet.data?.filter(r=>!excluded.has(r.row))};
@@ -47,8 +49,12 @@ export function prepareImport(sheet:ServerSheet,mappings:SourceColumnMapping[],c
  const cellMappings=rosterForMonth(reference,ctx.group,ctx.month).length?mappings.map(m=>m.field==='person.externalId'?{...m,required:false}:m):mappings;
  const result=pivot?validateClosing(filtered,cellMappings,ctx):validateWeekly(filtered,cellMappings,ctx);
  const hours=sheet.columns.filter(c=>/^(hours|stunden)$/i.test(c.label.trim()));
- const multipleRows=new Set((filtered.data??[]).filter(r=>hours.some(c=>/\d+(?:[.,]\d+)?\s*\+\s*\d/.test(String(r.cells[c.key]?.value??'')))).map(r=>r.row));
- const identities=resolveImportPeople(result.records,people,assignments,ctx.group,ctx.setting,choices,reference,ctx.month,multipleRows);
+ const hints=new Map<number,StaffingHint>((filtered.data??[]).map(r=>{
+  const raw=hours.map(c=>String(r.cells[c.key]?.value??'')).find(s=>/\d\s*\+\s*\d/.test(s));
+  const parts=raw?.trim().split(/\s*\+\s*/);
+  return[r.row,{count:parts?.every(s=>/^\d+(?:[.,]\d+)?$/.test(s))?parts.length:null,lighthouse:Object.values(r.cells).some(c=>typeof c.value==='string'&&/\blighthouse\b/i.test(c.value))}];
+ }));
+ const identities=resolveRecipients(result.records,people,assignments,ctx,choices,reference,hints);
  return {...result,sourceRecords:result.records,records:identities.records,issues:[...result.issues,...identities.issues],
   identityMatches:[...identities.matches,...skippedRows].sort((a,b)=>a.row-b.row),unresolvedCount:identities.unresolvedCount,
   skipped:result.skipped+skippedRows.length,skippedUnstaffed:skippedRows.filter(r=>r.method==='vacant').length,skippedManual:skippedRows.filter(r=>r.method==='manual-skip').length,
