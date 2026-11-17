@@ -1,4 +1,5 @@
 import {groupProjectAssessment} from '../shared/projectAssessment.ts';
+import {cellComments} from '../shared/excelComments.ts';
 import { groupMetricBlocks, type DASetting, type MetricDefinition, type SECGroup } from '../shared/groups.ts';
 import { closingDefinitions, closingMappingError, prepareClosing, type ClosingRecord, type ImportedCell } from '../shared/closingImport.ts';
 import type { AdminMetric, ExcelCell, ImportPhase, SourceColumnMapping } from '../shared/admin.ts';
@@ -27,20 +28,26 @@ function definitions(ctx:ImportContext):MetricDefinition[]{
   return ctx.metrics.filter(m=>m.active&&(m.dataset!=='softbonus'||ctx.group==='ST')).map(m=>({key:m.id,label:m.label,unit:m.unit,weight:m.weight,icon:'check',block:m.block}));
 }
 function baseRow(record:ClosingRecord,normalized:Record<string,unknown>):NormalizedRow{
-  const fields=Object.fromEntries(Object.entries(record.fields).filter(([k])=>!deniedFields.has(k)));
+  const fields=Object.fromEntries(Object.entries(record.fields).filter(([k])=>!deniedFields.has(k)).map(([key,cell])=>{
+    const allowed=key.startsWith('softbonus.')&&key!=='softbonus.overall'||!key.startsWith('premium.')&&/\.(achievement|target|actual)$/.test(key);
+    if(allowed||!cell.comments)return[key,cell];
+    const {comments:excluded,...value}=cell;void excluded;return[key,value];
+  }));
   return{row:record.row,externalId:text(fields['person.externalId']),name:text(fields['person.name']),market:text(fields['assignment.market']),sourceShopId:text(fields['assignment.sourceShopId'])||null,fields,normalized};
 }
 export function normalizeClosing(record:ClosingRecord,ctx:ImportContext):NormalizedRow{
   const f=record.fields;
   const metrics=definitions(ctx).map(m=>{
     const cell=f[m.key+'.achievement']??f['softbonus.config.'+m.key+'.achievement'];
-    return{...m,resultState:state(cell),achievement:percent(cell),actual:null,target:null};
+    const comments=cellComments(cell);
+    return{...m,resultState:state(cell),achievement:percent(cell),actual:null,target:null,...(comments.length?{comments}:{})};
   });
   // Preserve supplied qualitative columns individually; do not invent a combined score or missing weights.
   const source=closingDefinitions(ctx.group,ctx.metrics??[]);
   const qualitative=groupProjectAssessment(source.filter(d=>d.dataset==='softbonus'&&d.field!=='softbonus.overall'&&f[d.field]).map(d=>{
     const configured=ctx.metrics?.find(m=>d.field==='softbonus.config.'+m.id+'.achievement');
-    return{key:configured?.id??d.field,label:configured?.label??d.label.replace(/\s+/g,' '),unit:'%',weight:configured?.weight??null,icon:'check',resultState:state(f[d.field]),achievement:percent(f[d.field]),actual:null,target:null};
+    const comments=cellComments(f[d.field]);
+    return{key:configured?.id??d.field,label:configured?.label??d.label.replace(/\s+/g,' '),unit:'%',weight:configured?.weight??null,icon:'check',resultState:state(f[d.field]),achievement:percent(f[d.field]),actual:null,target:null,...(comments.length?{comments}:{})};
   }));
   const categoryCell=f['annual.monthPoints'];
   const suppliedPoints=numeric(categoryCell);
@@ -127,7 +134,8 @@ export function validateWeekly(sheet:ServerSheet,mappings:SourceColumnMapping[],
       if(ctx.phase==='TARGET_INITIALIZATION'&&sourceActual!==null&&sourceActual!==0)issues.push({row:r.row,column:am?.column??'',message:'Targetbasis enthält bereits Istwerte. Als Wochenstand importieren.'});
       if(ac?.kind==='value'&&typeof ac.value==='string'&&/^(?:x|n\/?a|n\.a\.)$/i.test(ac.value.trim()))specialValues++;
       else if(ac?.kind==='value'&&sourceActual===null&&ac.value!=='')issues.push({row:r.row,column:am?.column??'',message:m.label+': Istwert nicht lesbar.'});
-      return{...m,target,actual:ctx.phase==='TARGET_INITIALIZATION'?null:sourceActual};
+      const comments=cellComments(tc,ac);
+      return{...m,target,actual:ctx.phase==='TARGET_INITIALIZATION'?null:sourceActual,...(comments.length?{comments}:{})};
     });
     records.push(baseRow({row:r.row,month:ctx.month,fields},{groupId:ctx.group,month:ctx.month,setting:ctx.setting,metrics,phase:ctx.phase,configurationVersion:ctx.configurationVersion,sellout:percent(fields['sellout.overall'])}));
   }

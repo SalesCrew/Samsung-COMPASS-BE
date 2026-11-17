@@ -1,6 +1,7 @@
 import { Unzip, UnzipInflate } from 'fflate';
 import { DOMParser } from '@xmldom/xmldom';
 import type { ExcelCell, SheetPreview } from '../shared/admin.ts';
+import {readSheetComments} from '../shared/excelComments.ts';
 
 type XML = ReturnType<DOMParser['parseFromString']>;
 type Element = ReturnType<XML['getElementsByTagName']>[number];
@@ -16,7 +17,7 @@ export function readWorkbook(bytes: Uint8Array, filename: string): ServerSheet[]
   const archive: Record<string,Uint8Array>={}; let total=0; let failure: Error | null=null; let fileCount=0;
   const zip=new Unzip(file=>{
     if (++fileCount>3000) throw new Error('Zu viele Excel-Dateiteile.');
-    if (!/^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(file.name)) return;
+    if (!/^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml|worksheets\/_rels\/[^/]+\.xml\.rels|comments[^/]*\.xml|comments\/[^/]+\.xml|threadedComments\/[^/]+\.xml)$/.test(file.name)) return;
     if (archive[file.name]) throw new Error('Doppelte Excel-Dateiteile.');
     let length=0; const chunks:Uint8Array[]=[];
     file.ondata=(error,chunk,final)=>{
@@ -60,6 +61,12 @@ export function readWorkbook(bytes: Uint8Array, filename: string): ServerSheet[]
     const path=new URL(target,'https://workbook.local/xl/').pathname.slice(1);
     const doc=read(path);
     const allRows=children(doc,'row').map(row=>({row:Number(row.getAttribute('r')),cells:Object.fromEntries(children(row,'c').map(cell=>[cell.getAttribute('r')?.match(/^[A-Z]+/)?.[0]??'',value(cell)]))}));
+    const comments=readSheetComments(path,name,archive,read);
+    const rowsByNumber=new Map(allRows.map(row=>[row.row,row]));
+    for(const [ref,notes] of comments){
+      const row=rowsByNumber.get(Number(ref.match(/\d+$/)?.[0]));if(!row)continue;
+      const col=ref.match(/^[A-Z]+/)![0];row.cells[col]={...(row.cells[col]??{kind:'blank',value:null}),comments:notes};
+    }
     if(allRows.length>50000)throw new Error('Zu viele Zeilen im Arbeitsblatt.');
     const pivot=normalize(name)==='pivotliste';
     const candidate=allRows.slice(0,25).find(row=>Object.values(row.cells).some(c=>['secid','promoterid'].includes(normalize(String(c.value??'')))));

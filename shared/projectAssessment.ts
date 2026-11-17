@@ -1,4 +1,4 @@
-export type AssessmentDetail = {key:string;label:string;achievement:number|null;resultState:'value'|'missing'|'invalid'|'not-applicable'};
+export type AssessmentDetail = {key:string;label:string;achievement:number|null;resultState:'value'|'missing'|'invalid'|'not-applicable';comments?:import('./excelComments.ts').CellComment[]};
 export const PROJECT_ASSESSMENT_ITEMS = [
   ['softbonus.qualit-t-und-schnelligkeit-von-reportingaufgaben-inkl-market-sensing','Qualität & Schnelligkeit im Reporting (inkl. Market Sensing)'],
   ['softbonus.zustand-pos-sauberkeit-werbematerial-etc','Zustand POS (Sauberkeit, Werbematerial etc.)'],
@@ -14,7 +14,7 @@ export function groupProjectAssessment<T extends AssessmentDetail & {details?:As
   if(!parent)return [...metrics];
   const children=PROJECT_ASSESSMENT_ITEMS.flatMap(([key,label])=>{
     const source=metrics.find(m=>m.key===key);
-    return source?[{key,label,achievement:source.achievement,resultState:source.resultState}]:[];
+    return source?[{key,label,achievement:source.achievement,resultState:source.resultState,...(source.comments?.length?{comments:source.comments}:{})}]:[];
   });
   if(!children.length)return metrics.map(m=>m===parent?{...m,label:'Projektleiterbewertung'}:m);
   return metrics.filter(m=>!PROJECT_ASSESSMENT_ITEMS.some(([key])=>key===m.key)).map(m=>m===parent?{...m,label:'Projektleiterbewertung',details:children}:m);

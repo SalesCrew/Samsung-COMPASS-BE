@@ -1,7 +1,9 @@
 import { unzipSync } from 'fflate';
 import type { ExcelCell, SheetPreview } from './admin.ts';
+import {readSheetComments} from './excelComments.ts';
 
 const xml = (source: string) => {
+  if(/<!DOCTYPE|<!ENTITY/i.test(source))throw new Error('XML-Dokumenttypen und Entitäten sind nicht erlaubt.');
   const doc = new DOMParser().parseFromString(source, 'application/xml');
   if (doc.getElementsByTagName('parsererror').length) throw new Error('Ungültige Excel-XML-Struktur.');
   return doc;
@@ -50,6 +52,12 @@ export async function inspectWorkbook(file: File): Promise<SheetPreview[]> {
       row: Number(row.getAttribute('r')),
       cells: Object.fromEntries(elements(row, 'c').map(cell => [cell.getAttribute('r')?.match(/^[A-Z]+/)?.[0] ?? '', cellValue(cell)])),
     }));
+    const comments=readSheetComments(path,name,archive,p=>xml(read(p)));
+    const rowsByNumber=new Map(data.map(row=>[row.row,row]));
+    for(const [ref,notes] of comments){
+      const row=rowsByNumber.get(Number(ref.match(/\d+$/)?.[0]));if(!row)continue;
+      const col=ref.match(/^[A-Z]+/)![0];row.cells[col]={...(row.cells[col]??{kind:'blank',value:null}),comments:notes};
+    }
     const dimension = elements(doc, 'dimension')[0]?.getAttribute('ref') ?? '—';
     const pivot = isPivotSheet(name);
     const headerRow = pivot ? 2 : 1;

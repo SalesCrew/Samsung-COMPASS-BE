@@ -39,3 +39,10 @@ The private SQL projection is not executable by clients. Scoped invoker wrappers
 An explicitly configured IM test login receives a wholly synthetic, calendar-aware dashboard with 24 monthly closings and current-month cumulative weekly stands. Its virtual person/market IDs and read markers live only in the private presentation configuration; no people, assignments, imports, reports or weekly business rows are created. The stored login has no employee link, cannot read real SEC rows, and cannot be reassigned to a real employee while presentation configuration exists. Real admin charts and ranking inputs are therefore unchanged.
 
 Presentation dashboard and acknowledgement RPCs validate the live owner/session and dedicated account scope. `tests/presentation-isolation.sql` verifies permissions, durable read markers and isolation inside a transaction ending in ROLLBACK. No presentation credentials belong in this repository.
+
+
+## Excel cell comments
+
+The bounded reader follows worksheet-linked classic notes and modern threaded comments. Modern text replaces its compatibility fallback; author/person metadata, macros, external parts and unlinked notes are excluded. Comments stay at the mapped KPI/Softbonus cell, including PL subcriteria and each weekly stand. Source values are unchanged, and a new stand or correction does not inherit an old explanation.
+
+Future publications store the source text in their immutable metric payload. Verified annotations for pre-existing monthly publications live in sec_private.closing_cell_comments, keyed to publication ID and criterion with workbook hash and source row. RLS/FORCE RLS and no direct client grants protect the table; the invoker RPC sec_closing_comments uses the existing live-session, password, department, own-person and supervisor assignment rules. The own-data export includes authorized explanations. Historical overlays never change a numerical snapshot or migrate to a different revision.

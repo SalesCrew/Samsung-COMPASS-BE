@@ -37,7 +37,7 @@ export type ImportVersion = {
   carried: string[];
   closingSummary?: { records: number; otherMonths: number; warnings: number };
 };
-export type ExcelCell = { kind: 'value' | 'blank' | 'error' | 'uncached-formula'; value: string | number | boolean | null };
+export type ExcelCell = { kind: 'value' | 'blank' | 'error' | 'uncached-formula'; value: string | number | boolean | null; comments?:import('./excelComments.ts').CellComment[] };
 export type SheetPreview = { name: string; dimension: string; columns: { key: string; label: string; section?: string }[]; rows: number; headerRow?: number; date1904?: boolean; data?: { row: number; cells: Record<string, ExcelCell> }[] };
 
 export const IMPORT_DATASETS: readonly { id: ImportDatasetId; label: string; short: string; description: string }[] = [

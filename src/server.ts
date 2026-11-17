@@ -15,6 +15,7 @@ import type { SourceColumnMapping, AdminMetric } from '../shared/admin.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseRoster, rosterForMonth, type RosterEntry } from './roster.ts';
 import {readStaffingPlan,staffingOverview,type StaffingEvidence} from './staffing.ts';
+import {withReportComments,type ReportComments} from './reportComments.ts';
 import {importPeopleOptions} from './importPeople.ts';
 
 type Profile={user_id:string;email:string;display_name:string;role:AccountRole;department_ids:string[];person_id:string|null;primary_department:string|null;setting:string;active:boolean;must_change_password:boolean;is_test:boolean};
@@ -45,6 +46,11 @@ async function allRows(db:SupabaseClient,table:string,filters:Record<string,stri
  const rows:Record<string,unknown>[]=[];
  for(let offset=0;offset<100000;offset+=1000){let q=db.from(table).select('*').order(order).order(table==='sec_accounts'?'user_id':table==='sec_read_receipts'?'report_id':table==='sec_retention_policies'?'category':'id').range(offset,offset+999);for(const[k,v]of Object.entries(filters))q=q.eq(k,v);const{data,error}=await q;failDB(error);rows.push(...data??[]);if((data?.length??0)<1000)return rows;}
  throw new APIError(413,'Bitte den Zeitraum oder Bereich weiter eingrenzen.');
+}
+async function reportComments(s:Session,assignment:string|null,reports:Record<string,unknown>[]){
+ if(!reports.length)return reports;
+ const{data,error}=await s.db.rpc('sec_closing_comments',{p_assignment:assignment});failDB(error);
+ return withReportComments(reports,(data??[]) as ReportComments[]);
 }
 async function storedStaffing(s:Session,ctx:ImportContext):Promise<StaffingEvidence[]>{
  if(ctx.phase==='MONTH_FINALIZATION')return[];
@@ -137,7 +143,7 @@ const server=createServer(async(req,res)=>{
     if(assignment&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assignment))throw new APIError(400,'Ungültige SEC-Auswahl.');
     const{data,error}=await s.db.rpc('sec_supervisor_dashboard',{p_assignment:assignment||null});failDB(error);
     const{premiumRows,...dashboard}=data;
-    send(res,200,{...dashboard,profile:s.profile,readOnly:true,premiumHistory:dashboard.subject?ownPremiumHistory(premiumRows,dashboard.subject.person_id,dashboard.subject.primary_department):[],calendarDay:today()});return;
+    send(res,200,{...dashboard,reports:await reportComments(s,dashboard.selectedAssignment??null,dashboard.reports),profile:s.profile,readOnly:true,premiumHistory:dashboard.subject?ownPremiumHistory(premiumRows,dashboard.subject.person_id,dashboard.subject.primary_department):[],calendarDay:today()});return;
    }
    const realCalendarDay=today();const testDay=url.searchParams.get('testDay');const testMonth=url.searchParams.get('testMonth')??testDay?.slice(0,7);let calendarDay=realCalendarDay;
    if(s.profile.is_test){
@@ -162,7 +168,7 @@ const server=createServer(async(req,res)=>{
    const [reports,weekly,read,history,premiumRows]=selected?await Promise.all([allRows(s.db,'sec_monthly_reports',{assignment_id:selected},'published_at'),allRows(s.db,'sec_weekly_snapshots',{assignment_id:selected},'published_at'),allRows(s.db,'sec_read_receipts',{user_id:s.profile.user_id},'read_at'),s.db.rpc('sec_own_point_history',{p_assignment:selected}),allRows(s.db,'sec_monthly_reports',{person_id:s.profile.person_id,department_id:s.profile.primary_department!},'published_at')]):[[],[],[],{data:[],error:null},[]];
    failDB(history.error);
    const rankings=Object.fromEntries(await Promise.all([...new Set(reports.map(r=>String(r.month)))].map(async month=>{const{data,error}=await s.db.rpc('sec_own_rank',{p_assignment:selected,p_month:month});failDB(error);return[month.slice(0,7),data];})));
-   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports,weekly,read,pointHistory:history.data,premiumHistory:ownPremiumHistory(premiumRows as Parameters<typeof ownPremiumHistory>[0],s.profile.person_id,s.profile.primary_department!),rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
+   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports:await reportComments(s,selected,reports),weekly,read,pointHistory:history.data,premiumHistory:ownPremiumHistory(premiumRows as Parameters<typeof ownPremiumHistory>[0],s.profile.person_id,s.profile.primary_department!),rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
   }
   if(route==='/read'&&method==='POST'){const b=await json(req);if(typeof b.reportId!=='string')throw new APIError(400,'Bericht fehlt.');if(s.profile.is_test){const{data,error}=await s.db.rpc('sec_read_presentation',{p_report:b.reportId});failDB(error);if(data){send(res,200,{ok:true});return;}}const{error}=await s.db.from('sec_read_receipts').upsert({user_id:s.profile.user_id,report_id:b.reportId,read_at:new Date().toISOString()});failDB(error);send(res,200,{ok:true});return;}
   if(route==='/privacy/requests'&&method==='GET'){send(res,200,{requests:await allRows(s.db,'sec_privacy_requests',s.profile.role==='sec'?{user_id:s.profile.user_id}:{},'created_at')});return;}
@@ -174,7 +180,7 @@ const server=createServer(async(req,res)=>{
    const filters=s.profile.person_id?{person_id:s.profile.person_id}:null;
    const[reports,weekly,assignments]=filters?await Promise.all([allRows(s.db,'sec_monthly_reports',filters,'published_at'),allRows(s.db,'sec_weekly_snapshots',filters,'published_at'),allRows(s.db,'sec_assignments',filters,'created_at')]):[[],[],[]];
    const requests=await allRows(s.db,'sec_privacy_requests',{user_id:s.profile.user_id},'created_at');
-   send(res,200,{exportedAt:new Date().toISOString(),profile:s.profile,assignments,reports,weekly,requests});return;
+   send(res,200,{exportedAt:new Date().toISOString(),profile:s.profile,assignments,reports:await reportComments(s,null,reports),weekly,requests});return;
   }
   admin(s);
   if(route==='/admin/import-staffing'&&method==='GET'){
