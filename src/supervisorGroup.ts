@@ -1,4 +1,5 @@
 import {groupProjectAssessment} from '../shared/projectAssessment.ts';
+import {personalSoftbonus} from '../shared/personalSoftbonus.ts';
 import {annualCategory} from '../shared/annual.ts';
 import {ownPremiumHistory} from './premiumHistory.ts';
 import type {GroupAverageMetric,GroupMean,SupervisorGroupData} from '../shared/supervisorGroup.ts';
@@ -21,7 +22,7 @@ function metricGroups(rows:Row[],members:GroupSource['members'],kind:'metrics'|'
  const byPerson=new Map<string,Map<string,Metric[]>>();
  for(const row of rows){
   const setting=row.payload.setting??'full';
-  const metrics=kind==='qualitative'?groupProjectAssessment((row.payload.qualitative??[]) as Parameters<typeof groupProjectAssessment>[0]) as Metric[]:row.payload.metrics??[];
+  const metrics=kind==='qualitative'?groupProjectAssessment(personalSoftbonus(row.payload.qualitative??[],row.department_id) as Parameters<typeof groupProjectAssessment>[0]) as Metric[]:row.payload.metrics??[];
   for(const original of metrics){
    const metric=weekly?{...original,actual:finite(original.actual)?original.actual:null,target:finite(original.target)&&original.target>0?original.target:null,achievement:finite(original.actual)&&finite(original.target)&&original.target>0?original.actual/original.target*100:null}:original;
    const id=metricId(metric,setting);definitions.set(id,{metric,setting});
@@ -32,6 +33,7 @@ function metricGroups(rows:Row[],members:GroupSource['members'],kind:'metrics'|'
  return [...definitions].map(([id,{metric,setting}])=>{
   const people=byPerson.get(id)!;
   const eligible=members.filter(p=>p.setting===setting&&!(people.get(p.person_id)?.every(m=>m.resultState==='not-applicable')));
+  if(kind==='qualitative'&&!eligible.length)return null;
   const value=(person:string,key:'achievement'|'actual'|'target')=>{
    const values=people.get(person);return values?.length?agreed(values.map(m=>m.resultState==='missing'||m.resultState==='invalid'||m.resultState==='not-applicable'?null:m[key])):null;
   };
@@ -41,7 +43,7 @@ function metricGroups(rows:Row[],members:GroupSource['members'],kind:'metrics'|'
   const detailRows=rows.map(row=>({...row,payload:{...row.payload,metrics:(people.get(row.person_id)??[]).length?(kind==='qualitative'?groupProjectAssessment((row.payload.qualitative??[]) as Parameters<typeof groupProjectAssessment>[0]) as Metric[]:row.payload.metrics??[]).filter(m=>metricId(m,row.payload.setting??'full')===id).flatMap(m=>m.details??[]).map(child=>({...child,unit:'%',actual:null,target:null,weight:null})):[]}}));
   if([...people.values()].flat().some(m=>m.details?.length))item.details=metricGroups(detailRows,members,'metrics');
   return item;
- });
+ }).filter((item):item is GroupAverageMetric=>item!==null);
 }
 
 /** One SEC is one vote. Agreeing duplicate markets count once; ambiguity stays unknown. */

@@ -70,3 +70,23 @@ test('LH source corrections retain both same-date blocks and compare only the sa
  const stands=supervisorGroup(source(['a'],[],{weekly}),'LH','2026-11-20').weekly.stands;
  const last=stands.at(-1);assert.equal(last.metrics.length,2);assert.equal(last.metrics.find(m=>m.block==='HE').actual.value,5);assert.equal(last.metrics.find(m=>m.block==='HE').change.value,3);assert.equal(last.metrics.find(m=>m.block==='IM').change.value,1);
 });
+
+test('conditional Softbonus averages include participating zeros and exclude blank nonparticipants',()=>{
+ for(const [group,keys]of [['HE',['softbonus.samsung-e4y','softbonus.pos-e4y']],['DA',['softbonus.marktzufriedenheit-elektro-k-ck','softbonus.pos-bewertung-elektro-k-ck','softbonus.s-activity-elektro-k-ck']]]){
+  const rows=['a','b','c'].map(p=>row(p));
+  rows.forEach(r=>{r.department_id=group;r.payload.qualitative=keys.map(key=>metric(null,{key,label:key,unit:'%',resultState:'missing'}));});
+  rows[0].payload.qualitative[0]={...rows[0].payload.qualitative[0],resultState:'value',achievement:0};
+  rows[1].payload.qualitative[0]={...rows[1].payload.qualitative[0],resultState:'value',achievement:100};
+  const before=JSON.stringify(rows);
+  const m=supervisorGroup(source(['a','b','c'],rows),group,'2026-11-17').months[0];
+  assert.deepEqual(m.qualitative[0].achievement,{value:50,known:2,total:2});
+  assert.deepEqual(m.qualitative[1].achievement,{value:null,known:0,total:2});
+  assert.equal(m.softbonus.value,100);assert.equal(JSON.stringify(rows),before);
+ }
+});
+test('all nonparticipants omit a conditional group block; general missing results stay explicit',()=>{
+ const r=row('a');r.department_id='HE';
+ r.payload.qualitative=['softbonus.samsung-e4y','softbonus.pos-e4y','softbonus.wissenstest'].map(key=>metric(null,{key,label:key,unit:'%',resultState:'missing'}));
+ const m=supervisorGroup(source(['a'],[r]),'HE','2026-11-17').months[0];
+ assert.equal(m.qualitative.length,1);assert.equal(m.qualitative[0].label,'softbonus.wissenstest');assert.deepEqual(m.qualitative[0].achievement,{value:null,known:0,total:1});
+});
