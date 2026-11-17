@@ -45,6 +45,12 @@ do $$declare assignment uuid; result jsonb; history jsonb; begin
  select assignment_id into assignment from pg_temp.rank_case where n=1 and department='IM';
  result:=public.sec_own_rank(assignment,'2006-08-01');
  if result->>'pool'<>'15' or result->>'rank'<>'1' then raise exception 'Own rolling rank or person dedup failed: %',result; end if;
+ if result->'coverage'<>jsonb_build_object('fromMonth','2005-09','throughMonth','2006-08','total',17,'comparable',15,'missingMonths',1,'unclearPoints',1) then
+  raise exception 'Historical comparison coverage did not reconcile';
+ end if;
+ if (select array_agg(k order by k) from jsonb_object_keys(result->'coverage') k)<>array['comparable','fromMonth','missingMonths','throughMonth','total','unclearPoints'] then
+  raise exception 'Comparison coverage disclosed additional fields';
+ end if;
  history:=public.sec_own_point_history(assignment);
  if jsonb_array_length(history)<>12 or (select sum((e->>'points')::numeric) from jsonb_array_elements(history) e)<>36 then raise exception 'Own point projection duplicated markets'; end if;
  if exists(select 1 from jsonb_array_elements(history) e where e ? 'person_id' or e ? 'premium' or e ? 'name') then raise exception 'Projection disclosed extra fields'; end if;
@@ -90,6 +96,7 @@ set local role authenticated;
 do $$declare result jsonb;begin
  result:=public.sec_own_rank((select id from public.sec_assignments where market='Synthetic small division' and department_id='LH'),'2006-08-01');
  if result->>'pool'<>'0' or result->>'rank' is not null or result->>'reason'<>'not-enough-participants' then raise exception 'Small division exposed a rank';end if;
+ if result ? 'coverage' then raise exception 'Small division exposed peer coverage'; end if;
 end $$;
 reset role;
 update public.sec_accounts set department_ids=array['ST'],primary_department='ST' where user_id=(select user_id from rank_actor);
