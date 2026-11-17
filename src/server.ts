@@ -6,7 +6,7 @@ import { privacyMappings, weeklyMappings, validateContext, sourcePeriod, type Im
 import { type ImportPerson, type ImportAssignment } from './identity.ts';
 import { prepareImport, exclusionFingerprint } from './importPreparation.ts';
 import {ownPremiumHistory} from './premiumHistory.ts';
-import { imPresentation, type PresentationSettings } from './presentation.ts';
+import { secPresentation, type PresentationSettings } from './presentation.ts';
 import { isAdminRole, supervisorRouteAllowed, type AccountRole } from './access.ts';
 import { supervisorGroup, type GroupSource } from './supervisorGroup.ts';
 import { closingMappings, detectClosingGroup, excelMonth } from '../shared/closingImport.ts';
@@ -119,7 +119,7 @@ const server=createServer(async(req,res)=>{
     if(data){
      const settings=data as PresentationSettings,selected=url.searchParams.get('assignment');
      if(selected&&selected!==settings.assignmentId)throw new APIError(403,'Marktzuordnung nicht freigegeben.');
-     send(res,200,imPresentation(s.profile,settings,realCalendarDay,selected));return;
+     send(res,200,secPresentation(s.profile,settings,realCalendarDay,selected));return;
     }
    }
    if(testMonth){

@@ -1,4 +1,4 @@
-import { IM_METRICS, qualitativeMetrics, performanceTier } from '../shared/groups.ts';
+import { HE_METRICS, IM_METRICS, qualitativeMetrics, performanceTier } from '../shared/groups.ts';
 import { presentationProjectDetails } from '../shared/projectAssessment.ts';
 import { ownPremiumHistory } from './premiumHistory.ts';
 import { presentationAssessmentLabel } from '../shared/presentationAssessments.ts';
@@ -11,50 +11,64 @@ const pointsPattern=[1,2,1,1,2,2,1,2,2,2,2,2,2,2,3,2,3,3,3,2,3,3,3,3];
 const weighted=(metrics:{achievement:number;weight:number|null}[])=>round(metrics.reduce((sum,m)=>sum+m.achievement*(m.weight??0)/100,0));
 
 /** Entirely synthetic presentation model. Never reads employee records or calculates real payroll. */
-export function imPresentation<T extends PresentationProfile>(profile:T,settings:PresentationSettings,day:string,requestedAssignment?:string|null){
- if(!profile.is_test||profile.role!=='sec'||profile.primary_department!=='IM'||profile.person_id!==null)throw new Error('Isolated IM presentation account required');
+function presentation<T extends PresentationProfile>(profile:T,settings:PresentationSettings,day:string,group:'IM'|'HE',requestedAssignment?:string|null){
+ if(!profile.is_test||profile.role!=='sec'||profile.primary_department!==group||profile.person_id!==null)throw new Error('Isolated '+group+' presentation account required');
  if(requestedAssignment&&requestedAssignment!==settings.assignmentId)throw new RangeError('Own presentation assignment required');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||new Date(day+'T12:00:00Z').toISOString().slice(0,10)!==day)throw new RangeError('Valid calendar day required');
  // Keep the approved presentation stable across month changes; real accounts use their live calendar.
  const presentationDay='2026-10-30';
  const through=monthAt(presentationDay.slice(0,7),Number(presentationDay.slice(8))>=15?-1:-2);
  const months=Array.from({length:24},(_,index)=>monthAt(through,index-23));
- const assignment={id:settings.assignmentId,person_id:settings.personId,department_id:'IM',setting:'full',market:settings.market,active:true};
+ const definition=group==='HE'?HE_METRICS:IM_METRICS;
+ const assignment={id:settings.assignmentId,person_id:settings.personId,department_id:group,setting:'full',market:settings.market,active:true};
  const reports=months.map(month=>{
   const index=((Number(month.slice(0,4))*12+Number(month.slice(5))-1)%24+24)%24;
   const points=pointsPattern[index],base=points===3?102:points===2?93:86;
-  const targets=[44+index%4*2,70+index%3*5,1090+index%5*10,40+index%3*2,22+index%4,120+index%3*5];
-  const offsets=[-2,5,3,-8,1,4];
-  const metrics=IM_METRICS.map((metric,i)=>{
-   const target=targets[i],actual=Math.round(target*(base+offsets[i])/100);
+  const targets=group==='HE'?[48+index%4*2,18+index%3,900+index%5*10,50]:[44+index%4*2,70+index%3*5,1090+index%5*10,40+index%3*2,22+index%4,120+index%3*5];
+  const offsets=group==='HE'?[-2,5,3,-4]:[-2,5,3,-8,1,4];
+  const metrics=definition.map((metric,i)=>{
+   const target=targets[i],actual=metric.unit==='%'?round(target*(base+offsets[i])/100):Math.round(target*(base+offsets[i])/100);
    return{...metric,resultState:'value' as const,target,actual,achievement:round(actual/target*100)};
   });
-  const qualitative=qualitativeMetrics('IM').map((metric,i)=>{
+  const qualitative=qualitativeMetrics(group).map((metric,i)=>{
    const achievement=points===3?[98,100,97][i]:points===2?[93,94,92][i]:[86,85,88][i];
    return{...metric,label:metric.key==='knowledge'?presentationAssessmentLabel(month,metric.label):metric.label,resultState:'value' as const,target:100,actual:achievement,achievement,...(metric.key==='project'?{details:presentationProjectDetails(achievement)}:{})};
   });
   const sellout=weighted(metrics),softbonus=weighted(qualitative);
   const id='presentation-'+settings.assignmentId+'-'+month;
-  return{id,person_id:settings.personId,assignment_id:settings.assignmentId,department_id:'IM',month:month+'-01',revision:1,
+  return{id,person_id:settings.personId,assignment_id:settings.assignmentId,department_id:group,month:month+'-01',revision:1,
    import_id:'presentation-only',configuration_id:null,published_at:monthAt(month,1)+'-15T08:00:00Z',
-   payload:{groupId:'IM',setting:'full',month,sourceLevel:null,configurationVersion:'presentation-im-v1',sellout,softbonus,
-    tier:performanceTier('IM',sellout,softbonus),points,premium:round((points===3?1360:points===2?990:650)+index%4*37.5),
+   payload:{groupId:group,setting:'full',month,sourceLevel:null,configurationVersion:'presentation-'+group.toLowerCase()+'-v1',sellout,softbonus,
+    tier:performanceTier(group,sellout,softbonus),points,premium:round((points===3?1360:points===2?990:650)+index%4*37.5),
     extrasAvailable:true,extras:index%3===0?[{type:'On-top',amount:150+index%4*25}]:[],metrics,qualitative,changed:[]}};
  });
- const currentMonth=presentationDay.slice(0,7),targets=[50,80,1120,44,24,130],stages=[0,.23,.47,.72,.96];
+ const currentMonth=presentationDay.slice(0,7),targets=group==='HE'?[60,22,950,50]:[50,80,1120,44,24,130],stages=[0,.23,.47,.72,.96];
  const weekly=[1,8,15,22,29].flatMap((date,index)=>{
   const asOf=currentMonth+'-'+String(date).padStart(2,'0');if(asOf>presentationDay)return[];
   return[{id:'presentation-weekly-'+settings.assignmentId+'-'+asOf,person_id:settings.personId,assignment_id:settings.assignmentId,
-   department_id:'IM',month:currentMonth+'-01',as_of:asOf,revision:1,published_at:asOf+'T08:00:00Z',
-   payload:{setting:'full',metrics:IM_METRICS.map((metric,i)=>({ ...metric,target:targets[i],
-    actual:index===0?null:metric.unit==='€'?[null,1087,1101,1098,1117][index]:Math.round(targets[i]*stages[index]*[1.05,1.02,1,.88,.94,1.04][i])}))}}];
+   department_id:group,month:currentMonth+'-01',as_of:asOf,revision:1,published_at:asOf+'T08:00:00Z',
+   payload:{setting:'full',metrics:definition.map((metric,i)=>({ ...metric,target:targets[i],
+    actual:index===0?null:metric.unit==='€'?(group==='HE'?[null,920,934,941,958]:[null,1087,1101,1098,1117])[index]:metric.unit==='%'?[null,44,46,47,49][index]:Math.round(targets[i]*stages[index]*(group==='HE'?[1.05,.88,1,1]:[1.05,1.02,1,.88,.94,1.04])[i])}))}}];
  });
  return{presentation:true,profile:{...profile,person_id:settings.personId},assignments:[assignment],selectedAssignment:assignment.id,
   reports,weekly,read:settings.readIds.filter(id=>reports.some(r=>r.id===id)).map(report_id=>({report_id})),
-  premiumHistory:ownPremiumHistory(reports,settings.personId,'IM'),
+  premiumHistory:ownPremiumHistory(reports,settings.personId,group),
   pointHistory:reports.map(r=>({month:r.month.slice(0,7),points:r.payload.points,sourceLevel:null})),
   rankings:Object.fromEntries(months.map((month,index)=>[month,index<11
    ?{pool:28,rank:null,outsideTopTen:false,reason:'incomplete-history'}
    :{pool:28,rank:3,outsideTopTen:false}])),
   calendarDay:presentationDay,realCalendarDay:day,testReplay:false};
+}
+
+/** Existing IM examples and frozen dates stay unchanged. */
+export function imPresentation<T extends PresentationProfile>(profile:T,settings:PresentationSettings,day:string,requestedAssignment?:string|null){
+ return presentation(profile,settings,day,'IM',requestedAssignment);
+}
+export function hePresentation<T extends PresentationProfile>(profile:T,settings:PresentationSettings,day:string,requestedAssignment?:string|null){
+ return presentation(profile,settings,day,'HE',requestedAssignment);
+}
+export function secPresentation<T extends PresentationProfile>(profile:T,settings:PresentationSettings,day:string,requestedAssignment?:string|null){
+ if(profile.primary_department==='IM')return imPresentation(profile,settings,day,requestedAssignment);
+ if(profile.primary_department==='HE')return hePresentation(profile,settings,day,requestedAssignment);
+ throw new Error('Supported isolated presentation account required');
 }
