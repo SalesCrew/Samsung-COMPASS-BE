@@ -1,20 +1,22 @@
 import { resolveImportPeople, nameKey, type ImportPerson, type ImportAssignment, type IdentityMatch } from './identity.ts';
 import type { NormalizedRow, ImportContext } from './imports.ts';
 import { rosterForMonth, matchRosterMarket, marketSimilarity, marketKey, type RosterEntry } from './roster.ts';
+import {planMarketStaffing,staffingProgress,type StaffingEvidence,type StaffingProgress} from './staffing.ts';
 
 export type PersonChoices=Record<string,string|string[]>;
 export type StaffingHint={count:number|null;lighthouse:boolean};
 export type Recipient={personId:string;name:string;departmentId:string;market:string};
-export type RecipientMatch=IdentityMatch & {recipients?:Recipient[];expectedCount?:number;shared?:boolean;targetGroup?:string;targetGroups?:string[]};
+export type RecipientMatch=IdentityMatch & {recipients?:Recipient[];expectedCount?:number;shared?:boolean;targetGroup?:string;targetGroups?:string[];staffing?:StaffingProgress & {currentDivision:'HE'|'IM'}};
 
 /** One source market may serve several people. Personal closing values never fan out. */
-export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],assignments:ImportAssignment[],ctx:ImportContext,choices:PersonChoices,reference:RosterEntry[],hints:Map<number,StaffingHint>){
+export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],assignments:ImportAssignment[],ctx:ImportContext,choices:PersonChoices,reference:RosterEntry[],hints:Map<number,StaffingHint>,previous:StaffingEvidence[]=[],permitted:readonly string[]=['HE','IM']){
  const records:NormalizedRow[]=[],matches:RecipientMatch[]=[],issues:{row:number;column:string;message:string}[]=[];
  for(const row of rows){
   const choice=choices[String(row.row)],hint=hints.get(row.row),weekly=ctx.phase!=='MONTH_FINALIZATION';
   const own=matchRosterMarket(row.market,rosterForMonth(reference,ctx.group,ctx.month));
+  const plan=planMarketStaffing(row.market,ctx,hint?.count??null,hint?.lighthouse??false,reference,previous);
   const lh=weekly&&['HE','IM'].includes(ctx.group)?matchRosterMarket(row.market,rosterForMonth(reference,'LH',ctx.month)):null;
-  const useLH=Boolean(lh&&(hint?.lighthouse||(!own.entries.length&&!own.ambiguous&&lh.entries.length)));
+  const useLH=Boolean(lh?.entries.length&&(hint?.lighthouse||(!own.entries.length&&!own.ambiguous)));
   const group=useLH?'LH':ctx.group,lookup=useLH?lh!:own;
   // A Lighthouse row can also include a regular SEC of this source division.
   const refs=useLH?[...lookup.entries,...(hint?.lighthouse?own.entries:[])]:lookup.entries;
@@ -22,7 +24,7 @@ export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],ass
   if(useLH&&!groups.includes('LH'))groups.push('LH');
   if(!groups.length)groups.push(group);
   const ids=[...new Set(refs.map(r=>r.person_id).filter((id):id is string=>Boolean(id)))];
-  const shared=weekly&&(useLH||ids.length>1||Boolean(hint?.count&&hint.count>1)||Array.isArray(choice));
+  const shared=weekly&&(plan||useLH||ids.length>1||Boolean(hint?.count&&hint.count>1)||Array.isArray(choice));
   if(!shared){
    if(Array.isArray(choice)){
     issues.push({row:row.row,column:'',message:'Monatsabschlüsse enthalten persönliche Bewertungen und Prämien. Bitte genau eine Person je Excel-Zeile angeben.'});
@@ -31,9 +33,10 @@ export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],ass
    const one=resolveImportPeople([row],people,assignments,ctx.group,ctx.setting,choice?{[row.row]:choice}:{},reference,ctx.month);
    records.push(...one.records);matches.push(...one.matches);issues.push(...one.issues);continue;
   }
-  const expected=hint?.count??(ids.length|| (Array.isArray(choice)?choice.length:1));
+  const expected=plan?.expected[ctx.group as 'HE'|'IM']??hint?.count??(ids.length|| (Array.isArray(choice)?choice.length:1));
   const match:RecipientMatch={row:row.row,sourceName:row.name,sourceExternalId:row.externalId,sourceMarket:row.market,personId:null,status:'unresolved',method:null,score:lookup.score,message:'',shared:true,expectedCount:expected,targetGroup:groups.join(' / '),targetGroups:groups};
   let selected=Array.isArray(choice)?choice:typeof choice==='string'&&choice?[choice]:ids;
+  if(plan&&!selected.length&&!choice&&expected===1){const one=resolveImportPeople([row],people,assignments,ctx.group,ctx.setting,{},reference,ctx.month);if(one.matches[0]?.personId)selected=[one.matches[0].personId];}
   selected=[...selected];
   if((lookup.ambiguous||useLH&&hint?.lighthouse&&own.ambiguous)&&!choice)match.message='Mehrere ähnliche Standorte gefunden. Prüfe den Markt und wähle alle zugehörigen Personen.';
   else if(new Set(selected).size!==selected.length)match.message='Eine Person ist doppelt ausgewählt. Jede Person darf nur einmal vorkommen.';
@@ -62,9 +65,10 @@ export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],ass
    if(identity.unresolvedCount)match.message='SEC-ID und Name widersprechen sich. Bitte die Excel-Zeile prüfen.';
   }
   match.recipients=recipients;
+  if(plan)match.staffing={...staffingProgress(plan,previous,ctx.asOf,permitted),currentDivision:plan.source};
   if(match.message){issues.push({row:row.row,column:'',message:match.message});matches.push(match);continue;}
   match.status='matched';match.method=choice?'manual':'roster';match.personId=recipients[0]?.personId??null;
-  match.message=`${recipients.length} Personen · ${useLH?'LH · '+ctx.group+'-Ziele':'gemeinsame Marktziele'}. Ziele und Istwerte gelten unverändert für jede zugeordnete Person.`;
+  match.message=`${recipients.length} ${recipients.length===1?'Person':'Personen'} · ${useLH?'LH · '+ctx.group+'-Ziele':'gemeinsame Marktziele'}. Ziele und Istwerte gelten unverändert für jede zugeordnete Person.`;
   for(const recipient of recipients){
    const person=people.find(p=>p.id===recipient.personId)!;
    const metrics=(row.normalized.metrics??[]) as {key:string;block?:string}[];
@@ -72,7 +76,7 @@ export function resolveRecipients(rows:NormalizedRow[],people:ImportPerson[],ass
    records.push({...row,externalId:person.external_id,name:person.name,market:recipient.market,
     // Shared weekly rows retain numeric source fields, never another employee's name/ID.
     fields:Object.fromEntries(Object.entries(row.fields).filter(([key])=>!key.startsWith('person.'))),
-    normalized:{...normalized,identity:{personId:person.id,method:match.method,sharedMarket:true,sourceRow:row.row,recipientCount:recipients.length}}});
+    normalized:{...normalized,...(plan?{staffing:plan}:{}),identity:{personId:person.id,method:match.method,sharedMarket:true,sourceRow:row.row,recipientCount:recipients.length}}});
   }
   matches.push(match);
  }

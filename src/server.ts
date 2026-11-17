@@ -14,6 +14,7 @@ import { closingMappings, detectClosingGroup, excelMonth } from '../shared/closi
 import type { SourceColumnMapping, AdminMetric } from '../shared/admin.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseRoster, rosterForMonth, type RosterEntry } from './roster.ts';
+import {readStaffingPlan,staffingOverview,type StaffingEvidence} from './staffing.ts';
 
 type Profile={user_id:string;email:string;display_name:string;role:AccountRole;department_ids:string[];person_id:string|null;primary_department:string|null;setting:string;active:boolean;must_change_password:boolean;is_test:boolean};
 type Session={token:string;profile:Profile;db:SupabaseClient};
@@ -43,6 +44,28 @@ async function allRows(db:SupabaseClient,table:string,filters:Record<string,stri
  const rows:Record<string,unknown>[]=[];
  for(let offset=0;offset<100000;offset+=1000){let q=db.from(table).select('*').order(order).order(table==='sec_accounts'?'user_id':table==='sec_read_receipts'?'report_id':table==='sec_retention_policies'?'category':'id').range(offset,offset+999);for(const[k,v]of Object.entries(filters))q=q.eq(k,v);const{data,error}=await q;failDB(error);rows.push(...data??[]);if((data?.length??0)<1000)return rows;}
  throw new APIError(413,'Bitte den Zeitraum oder Bereich weiter eingrenzen.');
+}
+async function storedStaffing(s:Session,ctx:ImportContext):Promise<StaffingEvidence[]>{
+ if(ctx.phase==='MONTH_FINALIZATION')return[];
+ const imports=await allRows(s.db,'sec_imports',{month:ctx.month+'-01'});
+ const batches=imports.filter(i=>['TARGET_INITIALIZATION','WEEKLY_PROGRESS'].includes(String(i.phase))&&['draft','published'].includes(String(i.status))&&String(i.as_of)<=ctx.asOf&&['HE','IM'].includes(String(i.department_id)));
+ const byId=new Map(batches.map(i=>[String(i.id),i])),evidence:StaffingEvidence[]=[];
+ for(let start=0;start<batches.length;start+=50){
+  const ids=batches.slice(start,start+50).map(i=>String(i.id));
+  for(let offset=0;offset<100000;offset+=1000){
+   const {data,error}=await s.db.from('sec_import_rows').select('id,import_id,person_id,normalized,fields').in('import_id',ids).order('id').range(offset,offset+999);failDB(error);
+   for(const row of data??[]){const batch=byId.get(row.import_id);if(!batch)continue;
+    const stored=readStaffingPlan(row.normalized?.staffing),market=row.fields?.['assignment.market']?.value;
+    // Older imports may confirm a received side; they never invent a two-division staffing plan.
+    const plan=stored??(typeof market==='string'&&market.length>0?{version:1 as const,market,source:batch.department_id as 'HE'|'IM',expected:{}}:null);
+    if(!plan||plan.source!==batch.department_id)continue;
+    evidence.push({importId:row.import_id,source:plan.source,asOf:String(batch.as_of),savedAt:String(batch.published_at??batch.created_at),status:batch.status as 'draft'|'published',personId:row.person_id,plan,...(!stored?{legacy:true}:{})});
+   }
+   if((data?.length??0)<1000)break;
+   if(offset===99000)throw new APIError(413,'Bitte den Importzeitraum weiter eingrenzen.');
+  }
+ }
+ return evidence;
 }
 function context(input:Record<string,unknown>):ImportContext{
  const ctx:ImportContext={group:String(input.group) as ImportContext['group'],setting:(input.group==='DA'?String(input.setting??'full'):'full') as ImportContext['setting'],month:String(input.month??''),phase:String(input.phase) as ImportContext['phase'],asOf:String(input.asOf??''),configurationVersion:'source-v1',metrics:[]};
@@ -153,6 +176,11 @@ const server=createServer(async(req,res)=>{
    send(res,200,{exportedAt:new Date().toISOString(),profile:s.profile,assignments,reports,weekly,requests});return;
   }
   admin(s);
+  if(route==='/admin/import-staffing'&&method==='GET'){
+   const ctx=context({group:url.searchParams.get('group'),month:url.searchParams.get('month'),asOf:url.searchParams.get('asOf'),phase:url.searchParams.get('phase')});admin(s,ctx.group);
+   const evidence=await storedStaffing(s,ctx),permitted=s.profile.role==='app_admin'?['HE','IM']:s.profile.department_ids;
+   send(res,200,{markets:staffingOverview(evidence,ctx.asOf,permitted)});return;
+  }
   if(route==='/admin/roster'&&method==='GET'){
    const stored=await allRows(s.db,'sec_roster_entries',{},'imported_at');
    const rows=['HE','DA','IM','LH','ST'].flatMap(group=>rosterForMonth(stored as RosterEntry[],group,today().slice(0,7)));
@@ -237,14 +265,15 @@ const server=createServer(async(req,res)=>{
    const pivot=sheet.name.replace(/[\s_-]/g,'').toLowerCase()==='pivotliste';
    const mappings=Array.isArray(b.mappings)?b.mappings as SourceColumnMapping[]:pivot?privacyMappings(closingMappings(sheet,ctx.group,ctx.metrics)):weeklyMappings(sheet,ctx);
    if(b.personMatches!==undefined&&(typeof b.personMatches!=='object'||b.personMatches===null||Array.isArray(b.personMatches)||Object.entries(b.personMatches).some(([k,v])=>!/^\d+$/.test(k)||!(typeof v==='string'||Array.isArray(v)&&v.length>0&&v.length<=10&&v.every(id=>typeof id==='string'&&(id===''||/^[0-9a-f-]{36}$/.test(id)))))))throw new APIError(400,'Personenzuordnung prüfen.');
-   const[people,assignments,roster]=await Promise.all([allRows(s.db,'sec_people'),allRows(s.db,'sec_assignments'),allRows(s.db,'sec_roster_entries',{},'imported_at')]);
-   const result=prepareImport(sheet,mappings,ctx,people as ImportPerson[],assignments as ImportAssignment[],(b.personMatches??{}) as PersonChoices,roster as RosterEntry[]);
+   const[people,assignments,roster,previous]=await Promise.all([allRows(s.db,'sec_people'),allRows(s.db,'sec_assignments'),allRows(s.db,'sec_roster_entries',{},'imported_at'),storedStaffing(s,ctx)]);
+   const result=prepareImport(sheet,mappings,ctx,people as ImportPerson[],assignments as ImportAssignment[],(b.personMatches??{}) as PersonChoices,roster as RosterEntry[],previous,s.profile.role==='app_admin'?['HE','IM']:s.profile.department_ids);
    if(importMatch[2]==='validate'){send(res,200,{issues:result.issues,count:result.records.length,otherMonths:result.otherMonths,skipped:result.skipped,skippedUnstaffed:result.skippedUnstaffed,skippedManual:result.skippedManual,specialValues:result.specialValues,mappings,configurationVersion:ctx.configurationVersion,identityMatches:result.identityMatches,unresolvedCount:result.unresolvedCount,people:(people as ImportPerson[]).map(person=>({...person,department_ids:[...new Set((assignments as ImportAssignment[]).filter(a=>a.person_id===person.id).map(a=>a.department_id))],markets:(assignments as ImportAssignment[]).filter(a=>a.person_id===person.id&&a.department_id===ctx.group&&a.setting===ctx.setting).map(a=>a.market)}))});return;}
    if(result.issues.length||!result.records.length)throw new APIError(400,'Import enthält Fehler oder offene Personenzuordnungen. Zuerst prüfen.','IMPORT_INVALID');
    const contract:unknown[]=[p.hash,ctx,privacyMappings(mappings),sheet.name];
    if(result.records.some(r=>{const original=result.sourceRecords.find(v=>v.row===r.row);return original?.externalId!==r.externalId||original?.market!==r.market;}))contract.push(result.records.map(r=>[r.row,r.externalId,r.market]));
    if(result.skippedRows.length)contract.push({excludedRows:exclusionFingerprint(result.skippedRows)});
    contract.push({recipients:result.records.map(r=>[r.row,r.externalId,r.market,r.normalized.groupId,r.normalized.sourceGroup??null]).sort()});
+   if(result.records.some(r=>r.normalized.staffing))contract.push({staffing:result.records.map(r=>[r.row,r.normalized.staffing??null]).sort()});
    if(result.identityMatches.some(m=>m.method==='roster'))contract.push({roster:roster.map(r=>[r.id,r.source_hash,r.person_id]).sort()});
    const fingerprint=createHash('sha256').update(JSON.stringify(contract)).digest('hex');
    const{data,error}=await s.db.rpc('sec_stage_import',{p_department:ctx.group,p_month:ctx.month+'-01',p_phase:ctx.phase,p_as_of:ctx.asOf,p_fingerprint:fingerprint,p_filename:p.filename,p_sheet:sheet.name,p_mapping:privacyMappings(mappings),p_config:config?.id??null,p_rows:result.records});failDB(error);send(res,201,{import:data});return;
