@@ -11,6 +11,9 @@ export type SkippedImportRow = IdentityMatch & { status:'skipped'; method:'vacan
 const vacancy = new Set(['-', '–', '—', 'x', 'n/a', 'n.a.', 'na', 'no sec', 'kein sec', 'ohne sec', 'unbesetzt', 'nicht besetzt', 'vakant', 'vacant', 'offen', 'open', 'tbd']);
 const isVacant = (value:string) => vacancy.has(value.trim().toLocaleLowerCase('de-AT').replace(/\s+/g,' '));
 const sourceText = (cell:ExcelCell|undefined):string|null => !cell || cell.kind==='blank' ? '' : cell.kind==='value' ? String(cell.value??'').trim() : null;
+// In HA trackers SEC contains a staffing type, not a personal name. The dated
+// roster determines current employees; stale HOURS may describe former staff.
+const haStaffingLabel=(value:string)=>/^(?:(?:HA|DA)(?:[-\s]?(?:R|REF|LAUNDRY))?(?:\s*\(\s*ex\.?\s*VC\s*\))?(?:\s*\+\s*VC)?|VC)$/i.test(value.trim());
 
 /** Only explicit vacancy/blank employee cells are automatic exclusions. Unknown people stay errors. */
 export function skippedImportRows(sheet:ServerSheet,mappings:SourceColumnMapping[],ctx:ImportContext,people:ImportPerson[],choices:PersonChoices={},reference:RosterEntry[]=[],previous:StaffingEvidence[]=[]):SkippedImportRow[]{
@@ -30,13 +33,14 @@ export function skippedImportRows(sheet:ServerSheet,mappings:SourceColumnMapping
   if(!selected&&sourceMarket&&!knownIds.has(sourceExternalId)){
    const emptyId=!sourceExternalId||sourceExternalId==='0'||isVacant(sourceExternalId);
    const emptyName=!sourceName||isVacant(sourceName);
-   const staffingSignal=matchingStaffing(sourceMarket,previous,ctx.asOf).length>0||sheet.columns.some(c=>/^(hours|stunden)$/i.test(c.label.trim())&&/\d\s*\+\s*\d/.test(String(row.cells[c.key]?.value??'')))||Object.values(row.cells).some(c=>typeof c.value==='string'&&/\blighthouse\b/i.test(c.value));
+   const staffingSignal=['HE','IM'].includes(ctx.group)&&matchingStaffing(sourceMarket,previous,ctx.asOf).length>0||sheet.columns.some(c=>/^(hours|stunden)$/i.test(c.label.trim())&&/\d\s*\+\s*\d/.test(String(row.cells[c.key]?.value??'')))||Object.values(row.cells).some(c=>typeof c.value==='string'&&/\blighthouse\b/i.test(c.value));
    const roster=matchRosterMarket(sourceMarket,[...rosterForMonth(reference,ctx.group,ctx.month),...(['HE','IM'].includes(ctx.group)&&ctx.phase!=='MONTH_FINALIZATION'?rosterForMonth(reference,'LH',ctx.month):[])]);
+   if(ctx.group==='DA'&&ctx.phase!=='MONTH_FINALIZATION'&&emptyId&&haStaffingLabel(sourceName)&&rosterForMonth(reference,'DA',ctx.month).length&&!roster.entries.length&&!roster.ambiguous)method='vacant';
    // A blank legacy SEC column is not a vacancy when the maintained roster proves staffing.
    // An explicit "No SEC" retains its existing meaning until consciously corrected.
    if(isVacant(sourceName)||((id||name)&&emptyId&&emptyName&&!staffingSignal&&!roster.entries.length&&!roster.ambiguous))method='vacant';
   }
-  if(method)skipped.push({row:row.row,sourceName,sourceExternalId,sourceMarket,personId:null,status:'skipped',method,score:null,message:method==='vacant'?'Unbesetzter Markt laut Excel. Diese Zeile wird nicht importiert.':'Bewusst übersprungen. Diese Zeile wird nicht importiert.'});
+  if(method)skipped.push({row:row.row,sourceName,sourceExternalId,sourceMarket,personId:null,status:'skipped',method,score:null,message:ctx.group==='DA'&&haStaffingLabel(sourceName)?'Für diesen Berichtsmonat ist hier laut Personenliste niemand aus HA/DA eingesetzt. Diese Marktzeile wird übersprungen.':'Unbesetzter Markt laut Excel. Diese Zeile wird nicht importiert.'});
  }
  return skipped;
 }
@@ -53,7 +57,9 @@ export function prepareImport(sheet:ServerSheet,mappings:SourceColumnMapping[],c
  const hints=new Map<number,StaffingHint>((filtered.data??[]).map(r=>{
   const raw=hours.map(c=>String(r.cells[c.key]?.value??'')).find(s=>/\d\s*\+\s*\d/.test(s));
   const parts=raw?.trim().split(/\s*\+\s*/);
-  return[r.row,{count:parts?.every(s=>/^\d+(?:[.,]\d+)?$/.test(s))?parts.length:null,lighthouse:Object.values(r.cells).some(c=>typeof c.value==='string'&&/\blighthouse\b/i.test(c.value))}];
+  const nameColumn=mappings.find(m=>m.field==='person.name'&&m.dataset!=='ignore')?.column;
+  const currentHa=ctx.group==='DA'&&ctx.phase!=='MONTH_FINALIZATION'&&rosterForMonth(reference,'DA',ctx.month).length&&haStaffingLabel(sourceText(nameColumn?r.cells[nameColumn]:undefined)??'');
+  return[r.row,{count:!currentHa&&parts?.every(s=>/^\d+(?:[.,]\d+)?$/.test(s))?parts.length:null,lighthouse:Object.values(r.cells).some(c=>typeof c.value==='string'&&/\blighthouse\b/i.test(c.value))}];
  }));
  const identities=resolveRecipients(result.records,people,assignments,ctx,choices,reference,hints,previous,permitted);
  return {...result,sourceRecords:result.records,records:identities.records,issues:[...result.issues,...identities.issues],

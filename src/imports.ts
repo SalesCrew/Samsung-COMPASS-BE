@@ -90,9 +90,10 @@ export function weeklyMappings(sheet:ServerSheet,ctx:ImportContext):SourceColumn
   add(find(['store','markt','market']),'Markt','assignment.market','text',true);
   add(find(['name','sec name','promoter name','sec']),'Name','person.name','text');
   const he=ctx.group==='HE'&&sheet.columns.find(c=>c.key==='F')?.label==='TGT'&&sheet.columns.find(c=>c.key==='D')?.label==='SEC ID';
-  const tracker=['DA','IM'].includes(ctx.group)&&sheet.columns.find(c=>c.key==='C')?.label==='Store'&&sheet.columns.find(c=>c.key==='D')?.label==='SEC';
+  const tracker=['HE','DA','IM'].includes(ctx.group)&&sheet.columns.find(c=>c.key==='C')?.label==='Store'&&sheet.columns.find(c=>c.key==='D')?.label==='SEC'&&sheet.columns.find(c=>c.key==='F')?.label==='TGT'&&
+    (ctx.group!=='HE'||[['L','TTL'],['N','TGT'],['T','TTL'],['V','TGT'],['AB','TTL'],['AD','TGT %'],['AE','IHS %'],['AG','Total T/A%']].every(([key,label])=>sheet.columns.some(c=>c.key===key&&c.label===label)));
   if(he)mappings.find(m=>m.field==='person.name')!.column='C';
-  const trackerKeys:Record<string,[string,string]>={laundry:['F','L'],ref:['N','T'],'vc-stick':['V','AC'],'vc-premium':['AE','AK'],flagship:['F','L'],'a-series':['N','T'],'hhp-asp':['V','AB'],wear:['AD','AJ'],tablet:['AL','AR'],accessories:['AW','BC']};
+  const trackerKeys:Record<string,[string,string]>={units:['F','L'],soundbar:['N','T'],asp:['V','AB'],share:['AD','AE'],laundry:['F','L'],ref:['N','T'],'vc-stick':['V','AC'],'vc-premium':['AE','AK'],flagship:['F','L'],'a-series':['N','T'],'hhp-asp':['V','AB'],wear:['AD','AJ'],tablet:['AL','AR'],accessories:['AW','BC']};
   const keys:Record<string,[string,string]>={units:['F','G'],soundbar:['I','J'],asp:['L','M'],share:['O','P']};
   for(const m of definitions(ctx)){
     const pair=he?keys[m.key]:tracker?trackerKeys[m.key]:undefined;
@@ -102,7 +103,7 @@ export function weeklyMappings(sheet:ServerSheet,ctx:ImportContext):SourceColumn
     add(actual,m.label+' · Ist',m.key+'.actual',m.unit==='%'?'percent':m.unit==='€'?'currency':'number',ctx.phase!=='TARGET_INITIALIZATION');
   }
   if(he)add('R','Total T/A%','sellout.overall','percent');
-  if(tracker)add(ctx.group==='IM'?'BE':ctx.setting==='laundry-ref'?'AO':ctx.setting==='vc'?'AQ':'AM','Total T/A%','sellout.overall','percent');
+  if(tracker)add(ctx.group==='HE'?'AG':ctx.group==='IM'?'BE':ctx.setting==='laundry-ref'?'AO':ctx.setting==='vc'?'AQ':'AM','Total T/A%','sellout.overall','percent');
   return mappings;
 }
 function convert(cell:ExcelCell,type:SourceColumnMapping['dataType']):ExcelCell{
