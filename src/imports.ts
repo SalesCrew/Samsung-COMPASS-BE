@@ -153,7 +153,7 @@ export function validateWeekly(sheet:ServerSheet,mappings:SourceColumnMapping[],
   return{records,issues,skipped,specialValues,otherMonths:0};
 }
 export function validateContext(ctx:ImportContext){
-  if(ctx.targetPeriod!==undefined&&(ctx.phase==='MONTH_FINALIZATION'||!readTargetPeriod(ctx.targetPeriod,ctx.month)))throw new Error('Zielzeitraum ungültig. Wähle bei Wochenständen zwei gültige Daten, die den Berichtsmonat berühren; bis darf nicht vor von liegen.');
+  if(ctx.targetPeriod!==undefined&&(ctx.phase==='MONTH_FINALIZATION'||!readTargetPeriod(ctx.targetPeriod)))throw new Error('Zielzeitraum ungültig. Wähle bei Wochenständen zwei gültige Daten; bis darf nicht vor von liegen. Der Zeitraum ist ein optionaler Hinweis.');
   if(!['HE','DA','IM','LH','ST'].includes(ctx.group)||!['full','laundry-ref','vc'].includes(ctx.setting))throw new Error('Ungültige Zuordnung.');
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(ctx.month)||!/^\d{4}-\d{2}-\d{2}$/.test(ctx.asOf)||!ctx.asOf.startsWith(ctx.month))throw new Error('Ungültiger Berichtsmonat oder Datenstand.');
   const date=new Date(ctx.asOf+'T12:00:00Z');if(!Number.isFinite(date.valueOf())||date.toISOString().slice(0,10)!==ctx.asOf)throw new Error('Ungültiger Datenstichtag.');

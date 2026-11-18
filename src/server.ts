@@ -77,7 +77,7 @@ async function storedStaffing(s:Session,ctx:ImportContext):Promise<StaffingEvide
 }
 function context(input:Record<string,unknown>):ImportContext{
  const ctx:ImportContext={group:String(input.group) as ImportContext['group'],setting:(input.group==='DA'?String(input.setting??'full'):'full') as ImportContext['setting'],month:String(input.month??''),phase:String(input.phase) as ImportContext['phase'],asOf:String(input.asOf??''),configurationVersion:'source-v1',metrics:[]};
- if(input.targetPeriod!=null){const period=readTargetPeriod(input.targetPeriod,ctx.month);if(!period||ctx.phase==='MONTH_FINALIZATION')throw new APIError(400,'Zielzeitraum ungültig. Wähle bei Wochenständen zwei gültige Daten, die den Berichtsmonat berühren; bis darf nicht vor von liegen.');ctx.targetPeriod=period;}
+ if(input.targetPeriod!=null){const period=readTargetPeriod(input.targetPeriod);if(!period||ctx.phase==='MONTH_FINALIZATION')throw new APIError(400,'Zielzeitraum ungültig. Wähle bei Wochenständen zwei gültige Daten; bis darf nicht vor von liegen. Der Zeitraum ist ein optionaler Hinweis.');ctx.targetPeriod=period;}
  validateContext(ctx);if(!['TARGET_INITIALIZATION','WEEKLY_PROGRESS','MONTH_FINALIZATION'].includes(ctx.phase))throw new APIError(400,'Importphase wählen.');
  if(ctx.asOf>today())throw new APIError(400,'Zukünftige Datenstände können nicht veröffentlicht werden.');
  return ctx;

@@ -89,8 +89,7 @@ export function supervisorGroup(source:GroupSource,groupId:SupervisorGroupData['
    const own=(asOf:string)=>agreed(weekly.filter(r=>r.as_of===asOf&&r.person_id===p.person_id&&(groupId!=='LH'||r.payload.metrics?.some(m=>metricId(m,r.payload.setting??'full')===metric.id))).map(r=>(()=>{const m=r.payload.metrics?.find(m=>metricId(m,r.payload.setting??'full')===metric.id);return m&&finite(m.actual)&&!['missing','invalid','not-applicable'].includes(m.resultState??'')?m.actual:null;})()));
    const previousStand=groupId==='LH'?stands.slice(0,i).findLast(s=>s.metrics.some(m=>m.id===metric.id)):stands[i-1];
    const current=own(stands[i].asOf),previous=previousStand?own(previousStand.asOf):null;
-   const periods=weekly.filter(r=>r.person_id===p.person_id&&[stands[i].asOf,previousStand?.asOf].includes(r.as_of!)&&r.payload.metrics?.some(m=>metricId(m,r.payload.setting??'full')===metric.id)).map(r=>r.payload.targetPeriod);
-   return current!==null&&previous!==null&&periods.every(v=>sameTargetPeriod(v,periods[0]))?current-previous:null;
+   return current!==null&&previous!==null?current-previous:null;
   });metric.change=mean(changes,changes.length);
  }
  return{groupId,calendarDay,members:members.length,months,weekly:{month:calendarDay.slice(0,7),stands}};
