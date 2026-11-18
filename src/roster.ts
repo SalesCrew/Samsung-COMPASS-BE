@@ -1,7 +1,7 @@
 import type { ServerSheet } from './workbook.ts';
 
 export type RosterRow={source_row:number;email:string;department_id:string;first_name:string;last_name:string;market:string};
-export type RosterEntry={id:string;person_id:string|null;department_id:string;market:string;source_month:string;source_hash:string;imported_at:string};
+export type RosterEntry={id:string;person_id:string|null;department_id:string;market:string;source_month:string;source_hash:string;imported_at:string;email?:string};
 const headerKey=(value:unknown)=>String(value??'').normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const fields={nachname:'last_name',vorname:'first_name',division:'department_id',email:'email',emailadresse:'email',markt:'market'} as const;
 

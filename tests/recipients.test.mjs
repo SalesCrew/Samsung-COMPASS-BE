@@ -22,6 +22,14 @@ test('roster-confirmed double staffing also works without HOURS and manual choic
  assert.equal(prepare(sheet,ctx,undefined,undefined,{'2':['a','b']}).records.length,2);
  assert.equal(prepare(sheet,ctx,undefined,undefined,{'2':'skip'}).records.length,0);
 });
+test('20+15 is two people, and a dated additional market reference reuses the same existing account',()=>{
+ const im={...ctx,group:'IM'},data={...sheet,data:[{...row,cells:{...row.cells,F:v('20+15')}}]},assignments=[assignment('a','IM'),assignment('b','IM'),assignment('b','IM','MM Other City')];
+ const refs=[roster('a','IM'),roster('b','IM','MM Other City'),{...roster('b','IM'),id:'additional-market-b'}];
+ const result=prepare(data,im,assignments,refs);
+ assert.deepEqual(result.issues,[]);assert.equal(result.records.length,2);assert.equal(result.identityMatches[0].expectedCount,2);
+ assert.deepEqual(new Set(result.records.map(r=>r.externalId)),new Set(['SEC-a','SEC-b']));
+ for(const r of result.records)assert.equal(r.normalized.metrics[0].actual,-2);
+});
 test('wrong division, address branch, unlinked staff and contradicting identities block the whole source row',()=>{
  assert.equal(prepare(sheet,ctx,[assignment('a'),assignment('b','IM')]).unresolvedCount,1);
  assert.equal(prepare(sheet,ctx,[assignment('a'),assignment('b','HE','Media Markt Musterstadt Hauptstraße 2')]).unresolvedCount,1);

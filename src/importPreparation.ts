@@ -33,7 +33,7 @@ export function skippedImportRows(sheet:ServerSheet,mappings:SourceColumnMapping
   if(!selected&&sourceMarket&&!knownIds.has(sourceExternalId)){
    const emptyId=!sourceExternalId||sourceExternalId==='0'||isVacant(sourceExternalId);
    const emptyName=!sourceName||isVacant(sourceName);
-   const staffingSignal=['HE','IM'].includes(ctx.group)&&matchingStaffing(sourceMarket,previous,ctx.asOf).length>0||sheet.columns.some(c=>/^(hours|stunden)$/i.test(c.label.trim())&&/\d\s*\+\s*\d/.test(String(row.cells[c.key]?.value??'')))||Object.values(row.cells).some(c=>typeof c.value==='string'&&/\blighthouse\b/i.test(c.value));
+   const staffingSignal=['HE','IM'].includes(ctx.group)&&matchingStaffing(sourceMarket,previous,ctx.asOf).some(e=>!e.legacy)||sheet.columns.some(c=>/^(hours|stunden)$/i.test(c.label.trim())&&/\d\s*\+\s*\d/.test(String(row.cells[c.key]?.value??'')))||Object.values(row.cells).some(c=>typeof c.value==='string'&&/\blighthouse\b/i.test(c.value));
    const roster=matchRosterMarket(sourceMarket,[...rosterForMonth(reference,ctx.group,ctx.month),...(['HE','IM'].includes(ctx.group)&&ctx.phase!=='MONTH_FINALIZATION'?rosterForMonth(reference,'LH',ctx.month):[])]);
    if(ctx.group==='DA'&&ctx.phase!=='MONTH_FINALIZATION'&&emptyId&&haStaffingLabel(sourceName)&&rosterForMonth(reference,'DA',ctx.month).length&&!roster.entries.length&&!roster.ambiguous)method='vacant';
    // A blank legacy SEC column is not a vacancy when the maintained roster proves staffing.

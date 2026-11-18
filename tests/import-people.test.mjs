@@ -61,3 +61,11 @@ test('shared market recipients cannot reintroduce a former employee by a forged 
  const wrong=resolveRecipients([row],people,assignments,ctx,{'2':['a','old1']},refs,new Map([[2,{count:2,lighthouse:false}]]));
  assert.equal(wrong.records.length,0);assert.equal(wrong.unresolvedCount,1);
 });
+test('current roster aliases make an existing username searchable without returning full email addresses',()=>{
+ const aliases=[{...ref('im','IM'),email:'sample_01@example.invalid'},{...ref('lh','LH'),email:'other_person@example.invalid'}];
+ const options=importPeopleOptions(people.map(p=>p.id==='im'?{...p,source_aliases:['source_username_01']}:p),assignments,aliases,{...ctx,group:'IM'});
+ assert.deepEqual(options.find(p=>p.id==='im').aliases,['source_username_01','sample_01']);
+ assert.deepEqual(options.find(p=>p.id==='lh').aliases,['other_person']);
+ assert(!JSON.stringify(options).includes('@example.invalid'));
+ assert(importPeopleOptions(people,assignments,aliases,{...ctx,group:'DA'}).every(p=>!p.aliases&&!['im','lh'].includes(p.id)));
+});

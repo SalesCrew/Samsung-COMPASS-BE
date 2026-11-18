@@ -6,6 +6,7 @@ import { privacyMappings, weeklyMappings, validateContext, sourcePeriod, sourceT
 import { type ImportPerson, type ImportAssignment } from './identity.ts';
 import type { PersonChoices } from './recipients.ts';
 import { prepareImport, exclusionFingerprint } from './importPreparation.ts';
+import {correctedWeeklyScope} from './weeklyScope.ts';
 import {ownPremiumHistory} from './premiumHistory.ts';
 import { secPresentation, type PresentationSettings } from './presentation.ts';
 import { isAdminRole, supervisorRouteAllowed, type AccountRole } from './access.ts';
@@ -243,7 +244,8 @@ const server=createServer(async(req,res)=>{
    const periodRows=await allRows(s.db,'sec_import_rows',{},'id','import_id,period:normalized->targetPeriod');
    const periods=Map.groupBy(periodRows,r=>String(r.import_id));
    const versions=imports.map(batch=>{const values=(periods.get(String(batch.id))??[]).map(r=>readTargetPeriod(r.period));const first=values[0];return first&&values.every(p=>p?.from===first.from&&p.through===first.through)?{...batch,targetPeriod:first}:batch;});
-   send(res,200,{reports,weekly,imports:versions,configurations,people,assignments});return;
+   const reference=await allRows(s.db,'sec_roster_entries',{},'imported_at');
+   send(res,200,{reports,weekly:correctedWeeklyScope(weekly as unknown as Parameters<typeof correctedWeeklyScope>[0],assignments as unknown as Parameters<typeof correctedWeeklyScope>[1],reference as RosterEntry[]),imports:versions,configurations,people,assignments});return;
   }
   if(route==='/admin/configurations'&&method==='POST'){
    const b=await json(req);admin(s,String(b.department));const definition=b.definition as {metrics?:AdminMetric[]}|undefined;

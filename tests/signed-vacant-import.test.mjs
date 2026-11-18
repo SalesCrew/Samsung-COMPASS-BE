@@ -45,3 +45,14 @@ test('historical closing values stay signed; No SEC rows are excluded before req
  const parsed=prepareClosing({...s,data:[{row:3,cells}]},'HE',maps,'2026-10');assert.equal(normalizeClosing(parsed.records[0],context).normalized.metrics[0].achievement,-3.5);
 });
 test('SEC tracker header is recognized as a name source',()=>{const s=sheet([]);s.columns[1].label='SEC';assert.equal(weeklyMappings(s,ctx).find(m=>m.field==='person.name').column,'B');});
+test('old opposite-division updates do not turn blank IM markets into staffed rows; explicit split plans remain reviewable',()=>{
+ const im={...ctx,group:'IM'},input=sheet([row(2,'','','Market vacant','bad',null)]);
+ const previous=[{importId:'old-he',source:'HE',asOf:ctx.asOf,savedAt:'2026-10-30T10:00:00Z',status:'published',personId:'he-person',legacy:true,plan:{version:1,market:'Market vacant',source:'HE',expected:{}}}];
+ const vacant=prepareImport(input,mappings,im,people,assignments,{},[],previous);
+ assert.equal(vacant.skippedUnstaffed,1);assert.deepEqual(vacant.issues,[]);
+ const pending=[{...previous[0],legacy:false,plan:{...previous[0].plan,expected:{HE:1,IM:1}}}];
+ const review=prepareImport(input,mappings,im,people,assignments,{},[],pending);
+ assert.equal(review.skippedUnstaffed,0);assert.ok(review.issues.length);
+ const unknown=prepareImport(sheet([row(2,'','Unknown Person','Market vacant',2,10)]),mappings,im,people,assignments,{},[],previous);
+ assert.equal(unknown.skippedUnstaffed,0);assert.equal(unknown.unresolvedCount,1);
+});

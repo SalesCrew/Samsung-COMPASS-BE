@@ -20,6 +20,7 @@ export function importPeopleOptions(people:ImportPerson[],assignments:ImportAssi
   const departments=groups.filter(group=>eligible.get(group)!.has(person.id));
   if(!departments.length)return [];
   const markets=[...new Set(assignments.filter(a=>a.person_id===person.id&&departments.includes(a.department_id)&&a.setting===(a.department_id==='DA'?ctx.setting:'full')).map(a=>a.market))];
-  return [{...person,department_ids:departments,markets}];
+  const aliases=[...new Set([...(person.source_aliases??[]),...departments.flatMap(group=>rosterForMonth(reference,group,ctx.month).filter(r=>r.person_id===person.id).map(r=>r.email?.split('@')[0]).filter((alias):alias is string=>Boolean(alias)))])];
+  return [{...person,department_ids:departments,markets,...(aliases.length?{aliases}:{})}];
  }).sort((a,b)=>a.name.localeCompare(b.name,'de-AT')||a.external_id.localeCompare(b.external_id));
 }

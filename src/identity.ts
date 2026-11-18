@@ -2,7 +2,7 @@ import type { NormalizedRow } from './imports.ts';
 import { matchRosterMarket, rosterForMonth, type RosterEntry } from './roster.ts';
 import {importPersonIds} from './importPeople.ts';
 
-export type ImportPerson={id:string;external_id:string;name:string};
+export type ImportPerson={id:string;external_id:string;name:string;source_aliases?:string[]};
 export type ImportAssignment={person_id:string;department_id:string;setting:string;market:string};
 export type IdentityMatch={row:number;sourceName:string;sourceExternalId:string;sourceMarket:string;personId:string|null;status:'matched'|'unresolved'|'new'|'skipped';method:'id'|'name'|'fuzzy'|'market'|'roster'|'manual'|'new'|'vacant'|'manual-skip'|null;score:number|null;message:string;canCreate?:boolean};
 
