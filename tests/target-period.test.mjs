@@ -26,3 +26,13 @@ test('group means retain informational dates and compare all paired weekly value
  assert.equal(supervisorGroup(source,'IM','2026-10-09').weekly.stands[0].metrics[0].actual.value,8);
  assert.equal(supervisorGroup(source,'IM','2026-10-31').weekly.stands[1].metrics[0].actual.value,15);
 });
+
+test('weekly group notes carry only within their own assignment, month and source, without changing averages',()=>{
+ const row=(person,day,hint,extra={})=>({id:person+day,person_id:person,assignment_id:person,department_id:'IM',month:'2026-10-01',revision:1,published_at:'2026-10-'+day+'T08:00:00Z',as_of:'2026-10-'+day,payload:{setting:'full',...(hint!==undefined?{targetPeriod:hint}:{}),metrics:[{key:'units',label:'Units',unit:'Stück',weight:100,actual:Number(day),target:50}]},...extra});
+ const source={members:['a','b'].map(person_id=>({person_id,setting:'full'})),reports:[],premiumRows:[],pointHistory:[],weekly:[row('a','08',period),row('b','08',undefined),row('a','15',undefined),row('b','15',undefined)]},before=JSON.stringify(source);
+ const stands=supervisorGroup(source,'IM','2026-10-20').weekly.stands;assert.deepEqual(stands[1].metrics[0].targetPeriodCoverage,{period,known:1,total:2,different:false});assert.deepEqual(stands[1].metrics[0].actual,{value:15,known:2,total:2});assert.deepEqual(stands[1].metrics[0].change,{value:7,known:2,total:2});assert.equal(JSON.stringify(source),before);
+ const cleared=structuredClone(source);cleared.weekly[2].payload.targetPeriod=null;assert.equal(supervisorGroup(cleared,'IM','2026-10-20').weekly.stands[1].metrics[0].targetPeriodCoverage.known,0);
+ const otherAssignment=structuredClone(source);otherAssignment.weekly[2].assignment_id='new-market';assert.equal(supervisorGroup(otherAssignment,'IM','2026-10-20').weekly.stands[1].metrics[0].targetPeriodCoverage.known,0);
+ const conflict=structuredClone(source);conflict.weekly.push({...row('a','15',{from:'2026-10-01',through:'2026-10-02'}),id:'other-market',assignment_id:'other-market'});assert.equal(supervisorGroup(conflict,'IM','2026-10-20').weekly.stands[1].metrics[0].targetPeriodCoverage.different,true);
+ const oldMonth=structuredClone(source);oldMonth.weekly[0].month='2026-09-01';oldMonth.weekly[0].as_of='2026-09-08';assert.equal(supervisorGroup(oldMonth,'IM','2026-10-20').weekly.stands[1].metrics[0].targetPeriodCoverage.known,0);
+});

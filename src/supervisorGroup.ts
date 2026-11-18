@@ -1,4 +1,4 @@
-import {readTargetPeriod,sameTargetPeriod,summarizeTargetPeriods} from '../shared/targetPeriod.ts';
+import {readTargetPeriod,sameTargetPeriod,summarizeTargetPeriods,targetPeriodForStand} from '../shared/targetPeriod.ts';
 import {groupProjectAssessment} from '../shared/projectAssessment.ts';
 import {personalSoftbonus} from '../shared/personalSoftbonus.ts';
 import {annualCategory} from '../shared/annual.ts';
@@ -41,7 +41,7 @@ function metricGroups(rows:Row[],members:GroupSource['members'],kind:'metrics'|'
   const weights=[...people.values()].flat().map(m=>m.weight);
   const item:GroupAverageMetric={id,label:metric.label,unit:metric.unit,block:metric.block??'',setting,
    achievement:mean(eligible.map(p=>value(p.person_id,'achievement')),eligible.length),actual:mean(eligible.map(p=>value(p.person_id,'actual')),eligible.length),target:mean(eligible.map(p=>value(p.person_id,'target')),eligible.length),weight:agreed(weights)};
-  if(weekly)item.targetPeriodCoverage=summarizeTargetPeriods(eligible.map(p=>{const values=(people.get(p.person_id)??[]).map(m=>m.targetPeriod);return values.length&&values.every(v=>sameTargetPeriod(v,values[0]))?readTargetPeriod(values[0]):null;}));
+  if(weekly){const periods=eligible.map(p=>(people.get(p.person_id)??[]).map(m=>m.targetPeriod));item.targetPeriodCoverage=summarizeTargetPeriods(periods.map(values=>values.length&&values.every(v=>sameTargetPeriod(v,values[0]))?readTargetPeriod(values[0]):null));item.targetPeriodCoverage.different||=periods.some(values=>summarizeTargetPeriods(values).different);}
   const detailRows=rows.map(row=>({...row,payload:{...row.payload,metrics:(people.get(row.person_id)??[]).length?(kind==='qualitative'?groupProjectAssessment((row.payload.qualitative??[]) as Parameters<typeof groupProjectAssessment>[0]) as Metric[]:row.payload.metrics??[]).filter(m=>metricId(m,row.payload.setting??'full')===id).flatMap(m=>m.details??[]).map(child=>({...child,unit:'%',actual:null,target:null,weight:null})):[]}}));
   if([...people.values()].flat().some(m=>m.details?.length))item.details=metricGroups(detailRows,members,'metrics');
   return item;
@@ -78,7 +78,10 @@ export function supervisorGroup(source:GroupSource,groupId:SupervisorGroupData['
    metrics:groupId==='ST'?[]:metricGroups(rows,members,'metrics'),qualitative:metricGroups(rows,members,'qualitative'),
    rolling:{fromMonth:window[0],points:mean(rollingPoints,members.length),premium:mean(sums('premium'),members.length),extras:mean(sums('extras'),members.length),levels}};
  });
- const weekly=latest(eligible(source.weekly).filter(r=>r.month.slice(0,7)===calendarDay.slice(0,7)&&r.as_of&&r.as_of<=calendarDay&&r.published_at.slice(0,10)<=calendarDay),true);
+ const activeWeekly=latest(eligible(source.weekly).filter(r=>r.month.slice(0,7)===calendarDay.slice(0,7)&&r.as_of&&r.as_of<=calendarDay&&r.published_at.slice(0,10)<=calendarDay),true);
+ const periodStand=(row:Row)=>({month:row.month,setting:row.payload.setting??'full',groupId:row.department_id,assignmentId:row.assignment_id,sourceGroup:row.payload.sourceGroup,asOf:row.as_of!,updatedAt:row.published_at,targetPeriod:row.payload.targetPeriod});
+ const periodHistory=activeWeekly.map(periodStand);
+ const weekly=activeWeekly.map(row=>{const period=targetPeriodForStand(periodStand(row),periodHistory);return period?{...row,payload:{...row.payload,targetPeriod:period}}:row;});
  const stands=[...new Set(weekly.map(r=>r.as_of!))].sort().map(asOf=>{
   const rows=weekly.filter(r=>r.as_of===asOf);
   return {asOf,updatedAt:rows.map(r=>r.published_at).sort().at(-1)!,metrics:metricGroups(rows,members,'metrics',true)};

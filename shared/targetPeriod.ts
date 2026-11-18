@@ -1,6 +1,20 @@
 export type TargetPeriod={from:string;through:string};
 export type TargetPeriodCoverage={period:TargetPeriod|null;known:number;total:number;different:boolean};
 
+export type TargetPeriodStand={month:string;setting:string;groupId?:string;sourceGroup?:string;assignmentId?:string;asOf:string;updatedAt:string;targetPeriod?:unknown};
+/** A monthly note survives a later blank weekly upload in the same assignment
+ * and source block. Explicit null/invalid notes stop inheritance. Never select
+ * data by these dates or borrow a note from another month, person or LH block. */
+export function targetPeriodForStand(stand:TargetPeriodStand,history:readonly TargetPeriodStand[]):TargetPeriod|null{
+ if(stand.targetPeriod!==undefined)return readTargetPeriod(stand.targetPeriod);
+ const earlier=history.filter(row=>row.month.slice(0,7)===stand.month.slice(0,7)&&row.setting===stand.setting&&row.groupId===stand.groupId&&row.sourceGroup===stand.sourceGroup&&row.assignmentId===stand.assignmentId&&row.asOf<stand.asOf)
+  .sort((a,b)=>b.asOf.localeCompare(a.asOf)||b.updatedAt.localeCompare(a.updatedAt));
+ const active=new Map<string,TargetPeriodStand>();
+ for(const row of earlier)if(!active.has(row.asOf))active.set(row.asOf,row);
+ const declared=[...active.values()].find(row=>row.targetPeriod!==undefined);
+ return declared?readTargetPeriod(declared.targetPeriod):null;
+}
+
 export function validISODate(value:unknown):value is string{
  if(typeof value!=='string'||!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value))return false;
  const date=new Date(value+'T12:00:00Z');return Number.isFinite(date.valueOf())&&date.toISOString().slice(0,10)===value;
