@@ -7,6 +7,7 @@ import { type ImportPerson, type ImportAssignment } from './identity.ts';
 import type { PersonChoices } from './recipients.ts';
 import { prepareImport, exclusionFingerprint } from './importPreparation.ts';
 import {correctedWeeklyScope} from './weeklyScope.ts';
+import {activeAssignments,activeAssignmentRows,selectedAssignment} from './assignmentScope.ts';
 import {ownPremiumHistory} from './premiumHistory.ts';
 import { secPresentation, type PresentationSettings } from './presentation.ts';
 import { isAdminRole, supervisorRouteAllowed, type AccountRole } from './access.ts';
@@ -165,13 +166,13 @@ const server=createServer(async(req,res)=>{
    }
    if(!s.profile.person_id){send(res,200,{profile:s.profile,assignments:[],reports:[],weekly:[],read:[],pointHistory:[],calendarDay:today()});return;}
    const assignments=await allRows(s.db,'sec_assignments',{person_id:s.profile.person_id},'created_at');
-   const matching=assignments.filter(a=>a.department_id===s.profile.primary_department&&(a.department_id!=='DA'||a.setting===s.profile.setting));
-   const selected=url.searchParams.get('assignment')??String(matching.at(-1)?.id??'');
+   const matching=activeAssignments(assignments).filter(a=>a.department_id===s.profile.primary_department&&(a.department_id!=='DA'||a.setting===s.profile.setting));
+   const selected=selectedAssignment(url.searchParams.get('assignment'),assignments,matching);
    if(selected&&!matching.some(a=>a.id===selected))throw new APIError(403,'Marktzuordnung nicht freigegeben.');
-   const [reports,weekly,read,history,premiumRows]=selected?await Promise.all([allRows(s.db,'sec_monthly_reports',{assignment_id:selected},'published_at'),allRows(s.db,'sec_weekly_snapshots',{assignment_id:selected},'published_at'),allRows(s.db,'sec_read_receipts',{user_id:s.profile.user_id},'read_at'),s.db.rpc('sec_own_point_history',{p_assignment:selected}),allRows(s.db,'sec_monthly_reports',{person_id:s.profile.person_id,department_id:s.profile.primary_department!},'published_at')]):[[],[],[],{data:[],error:null},[]];
-   failDB(history.error);
+   const [reports,weekly,read,history,premiumRows,levels]=selected?await Promise.all([allRows(s.db,'sec_monthly_reports',{assignment_id:selected},'published_at'),allRows(s.db,'sec_weekly_snapshots',{assignment_id:selected},'published_at'),allRows(s.db,'sec_read_receipts',{user_id:s.profile.user_id},'read_at'),s.db.rpc('sec_own_point_history',{p_assignment:selected}),allRows(s.db,'sec_monthly_reports',{person_id:s.profile.person_id,department_id:s.profile.primary_department!},'published_at'),s.db.rpc('sec_own_level_history',{p_assignment:selected})]):[[],[],[],{data:[],error:null},[],{data:[],error:null}];
+   failDB(history.error);failDB(levels.error);
    const rankings=Object.fromEntries(await Promise.all([...new Set(reports.map(r=>String(r.month)))].map(async month=>{const{data,error}=await s.db.rpc('sec_own_rank',{p_assignment:selected,p_month:month});failDB(error);return[month.slice(0,7),data];})));
-   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports:await reportComments(s,selected,reports),weekly,read,pointHistory:history.data,premiumHistory:ownPremiumHistory(premiumRows as Parameters<typeof ownPremiumHistory>[0],s.profile.person_id,s.profile.primary_department!),rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
+   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports:await reportComments(s,selected,reports),weekly,read,pointHistory:history.data,levelHistory:levels.data,premiumHistory:ownPremiumHistory(activeAssignmentRows(premiumRows,assignments) as unknown as Parameters<typeof ownPremiumHistory>[0],s.profile.person_id,s.profile.primary_department!),rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
   }
   if(route==='/read'&&method==='POST'){const b=await json(req);if(typeof b.reportId!=='string')throw new APIError(400,'Bericht fehlt.');if(s.profile.is_test){const{data,error}=await s.db.rpc('sec_read_presentation',{p_report:b.reportId});failDB(error);if(data){send(res,200,{ok:true});return;}}const{error}=await s.db.from('sec_read_receipts').upsert({user_id:s.profile.user_id,report_id:b.reportId,read_at:new Date().toISOString()});failDB(error);send(res,200,{ok:true});return;}
   if(route==='/privacy/requests'&&method==='GET'){send(res,200,{requests:await allRows(s.db,'sec_privacy_requests',s.profile.role==='sec'?{user_id:s.profile.user_id}:{},'created_at')});return;}
@@ -245,7 +246,8 @@ const server=createServer(async(req,res)=>{
    const periods=Map.groupBy(periodRows,r=>String(r.import_id));
    const versions=imports.map(batch=>{const values=(periods.get(String(batch.id))??[]).map(r=>readTargetPeriod(r.period));const first=values[0];return first&&values.every(p=>p?.from===first.from&&p.through===first.through)?{...batch,targetPeriod:first}:batch;});
    const reference=await allRows(s.db,'sec_roster_entries',{},'imported_at');
-   send(res,200,{reports,weekly:correctedWeeklyScope(weekly as unknown as Parameters<typeof correctedWeeklyScope>[0],assignments as unknown as Parameters<typeof correctedWeeklyScope>[1],reference as RosterEntry[]),imports:versions,configurations,people,assignments});return;
+   const visibleAssignments=activeAssignments(assignments),visibleReports=activeAssignmentRows(reports,assignments),visibleWeekly=activeAssignmentRows(weekly,assignments);
+   send(res,200,{reports:visibleReports,weekly:correctedWeeklyScope(visibleWeekly as unknown as Parameters<typeof correctedWeeklyScope>[0],visibleAssignments as unknown as Parameters<typeof correctedWeeklyScope>[1],reference as RosterEntry[]),imports:versions,configurations,people,assignments:visibleAssignments});return;
   }
   if(route==='/admin/configurations'&&method==='POST'){
    const b=await json(req);admin(s,String(b.department));const definition=b.definition as {metrics?:AdminMetric[]}|undefined;
