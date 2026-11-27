@@ -1,5 +1,5 @@
 export type HistoryScope = 'division' | 'assignment';
-export type DashboardHistory = { historyScope: HistoryScope; pointHistory: unknown[]; levelHistory: unknown[] };
+export type DashboardHistory = { historyScope: HistoryScope; pointHistory: unknown[]; levelHistory: unknown[]; content?: {reports:Record<string,unknown>[];weekly:Record<string,unknown>[];premiumRows:Record<string,unknown>[];marketLineage:unknown[]} };
 
 /** Monthly reports are already assignment-scoped; the rolling premium must use the same market. */
 export function dashboardPremiumRows<T extends { assignment_id: string }>(rows: readonly T[], scope: HistoryScope, assignment: string) {
