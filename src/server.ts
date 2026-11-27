@@ -1,3 +1,4 @@
+import {dashboardPremiumRows,pendingMarketRanking,emptyDashboardHistory,type DashboardHistory} from './dashboardHistory.ts';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { authAdmin, publicAuth, userDatabase } from './supabase.ts';
@@ -169,10 +170,10 @@ const server=createServer(async(req,res)=>{
    const matching=activeAssignments(assignments).filter(a=>a.department_id===s.profile.primary_department&&(a.department_id!=='DA'||a.setting===s.profile.setting));
    const selected=selectedAssignment(url.searchParams.get('assignment'),assignments,matching);
    if(selected&&!matching.some(a=>a.id===selected))throw new APIError(403,'Marktzuordnung nicht freigegeben.');
-   const [reports,weekly,read,history,premiumRows,levels]=selected?await Promise.all([allRows(s.db,'sec_monthly_reports',{assignment_id:selected},'published_at'),allRows(s.db,'sec_weekly_snapshots',{assignment_id:selected},'published_at'),allRows(s.db,'sec_read_receipts',{user_id:s.profile.user_id},'read_at'),s.db.rpc('sec_own_point_history',{p_assignment:selected}),allRows(s.db,'sec_monthly_reports',{person_id:s.profile.person_id,department_id:s.profile.primary_department!},'published_at'),s.db.rpc('sec_own_level_history',{p_assignment:selected})]):[[],[],[],{data:[],error:null},[],{data:[],error:null}];
-   failDB(history.error);failDB(levels.error);
-   const rankings=Object.fromEntries(await Promise.all([...new Set(reports.map(r=>String(r.month)))].map(async month=>{const{data,error}=await s.db.rpc('sec_own_rank',{p_assignment:selected,p_month:month});failDB(error);return[month.slice(0,7),data];})));
-   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports:await reportComments(s,selected,reports),weekly,read,pointHistory:history.data,levelHistory:levels.data,premiumHistory:ownPremiumHistory(activeAssignmentRows(premiumRows,assignments) as unknown as Parameters<typeof ownPremiumHistory>[0],s.profile.person_id,s.profile.primary_department!),rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
+   const [reports,weekly,read,history,premiumRows]=selected?await Promise.all([allRows(s.db,'sec_monthly_reports',{assignment_id:selected},'published_at'),allRows(s.db,'sec_weekly_snapshots',{assignment_id:selected},'published_at'),allRows(s.db,'sec_read_receipts',{user_id:s.profile.user_id},'read_at'),s.db.rpc('sec_dashboard_history',{p_assignment:selected}),allRows(s.db,'sec_monthly_reports',{person_id:s.profile.person_id,department_id:s.profile.primary_department!},'published_at')]):[[],[],[],{data:emptyDashboardHistory,error:null},[]];
+   failDB(history.error);const historyView=history.data as DashboardHistory;
+   const rankings=Object.fromEntries(await Promise.all([...new Set(reports.map(r=>String(r.month)))].map(async month=>{if(historyView.historyScope==='assignment')return[month.slice(0,7),pendingMarketRanking()];const{data,error}=await s.db.rpc('sec_own_rank',{p_assignment:selected,p_month:month});failDB(error);return[month.slice(0,7),data];})));
+   send(res,200,{profile:s.profile,assignments:matching,selectedAssignment:selected,reports:await reportComments(s,selected,reports),weekly,read,...historyView,premiumHistory:ownPremiumHistory(dashboardPremiumRows(activeAssignmentRows(premiumRows,assignments) as unknown as Parameters<typeof ownPremiumHistory>[0],historyView.historyScope,selected??''),s.profile.person_id,s.profile.primary_department!),rankings,calendarDay,realCalendarDay,testReplay:calendarDay!==realCalendarDay});return;
   }
   if(route==='/read'&&method==='POST'){const b=await json(req);if(typeof b.reportId!=='string')throw new APIError(400,'Bericht fehlt.');if(s.profile.is_test){const{data,error}=await s.db.rpc('sec_read_presentation',{p_report:b.reportId});failDB(error);if(data){send(res,200,{ok:true});return;}}const{error}=await s.db.from('sec_read_receipts').upsert({user_id:s.profile.user_id,report_id:b.reportId,read_at:new Date().toISOString()});failDB(error);send(res,200,{ok:true});return;}
   if(route==='/privacy/requests'&&method==='GET'){send(res,200,{requests:await allRows(s.db,'sec_privacy_requests',s.profile.role==='sec'?{user_id:s.profile.user_id}:{},'created_at')});return;}
@@ -184,10 +185,26 @@ const server=createServer(async(req,res)=>{
    const filters=s.profile.person_id?{person_id:s.profile.person_id}:null;
    const[reports,weekly,assignments]=filters?await Promise.all([allRows(s.db,'sec_monthly_reports',filters,'published_at'),allRows(s.db,'sec_weekly_snapshots',filters,'published_at'),allRows(s.db,'sec_assignments',filters,'created_at')]):[[],[],[]];
    const requests=await allRows(s.db,'sec_privacy_requests',{user_id:s.profile.user_id},'created_at');
-   const evidence=await s.db.rpc('sec_own_point_evidence');failDB(evidence.error);
-   send(res,200,{exportedAt:new Date().toISOString(),profile:s.profile,assignments,reports:await reportComments(s,null,reports),weekly,requests,historicalPointEvidence:evidence.data});return;
+   const[evidence,historyRules]=await Promise.all([s.db.rpc('sec_own_point_evidence'),s.db.rpc('sec_history_rules')]);failDB(evidence.error);failDB(historyRules.error);
+   send(res,200,{exportedAt:new Date().toISOString(),profile:s.profile,assignments,reports:await reportComments(s,null,reports),weekly,requests,historicalPointEvidence:evidence.data,historyRules:historyRules.data});return;
   }
   admin(s);
+  if(route==='/admin/history/rules'&&method==='GET'){
+   if(s.profile.role!=='app_admin')throw new APIError(403,'Nur die App-Administration darf historische Zuordnungen verwalten.','FORBIDDEN');
+   const person=url.searchParams.get('personId');if(!person||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(person))throw new APIError(400,'Bitte eine gültige Person auswählen.');
+   const{data,error}=await s.db.rpc('sec_history_rules',{p_person:person});failDB(error);send(res,200,data);return;
+  }
+  if((route==='/admin/history/scope'||route==='/admin/history/absence')&&method==='POST'){
+   if(s.profile.role!=='app_admin')throw new APIError(403,'Nur die App-Administration darf bestätigte Historienregeln ändern.','FORBIDDEN');
+   const b=await json(req);if(typeof b.personId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(b.personId)||!['HE','DA','IM','LH'].includes(String(b.department))||typeof b.note!=='string'||!b.note.trim()||b.note.length>1000)throw new APIError(400,'Person, Division und Bestätigung prüfen.');
+   admin(s,String(b.department));
+   if(route==='/admin/history/scope'){
+    if(!['division','assignment'].includes(String(b.scope)))throw new APIError(400,'Bitte einen gültigen Umfang auswählen.');
+    const{data,error}=await s.db.rpc('sec_set_dashboard_history_rule',{p_person:b.personId,p_department:b.department,p_scope:b.scope,p_note:b.note});failDB(error);send(res,200,data);return;
+   }
+   if(typeof b.fromMonth!=='string'||typeof b.throughMonth!=='string'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(b.fromMonth)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(b.throughMonth))throw new APIError(400,'Bitte Beginn und Ende als Monat angeben.');
+   const{data,error}=await s.db.rpc('sec_confirm_level_absence',{p_person:b.personId,p_department:b.department,p_from:b.fromMonth+'-01',p_through:b.throughMonth+'-01',p_note:b.note});failDB(error);send(res,200,data);return;
+  }
   if(route==='/admin/import-staffing'&&method==='GET'){
    const ctx=context({group:url.searchParams.get('group'),month:url.searchParams.get('month'),asOf:url.searchParams.get('asOf'),phase:url.searchParams.get('phase')});admin(s,ctx.group);
    const evidence=await storedStaffing(s,ctx),permitted=s.profile.role==='app_admin'?['HE','IM']:s.profile.department_ids;
